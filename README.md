@@ -22,6 +22,11 @@ A production-ready FastAPI template for building AI agent applications with Lang
   - Multiple LLM model support (GPT-4o, GPT-4o-mini, GPT-5, GPT-5-mini, GPT-5-nano)
   - Streaming responses for real-time chat interactions
   - Tool calling and function execution capabilities
+  - **Discharge Summary Parsing**: AI-powered extraction of medication data from PDFs
+    - PyMuPDF for fast PDF processing (no external dependencies!)
+    - Dual parsing modes: text-based and vision-based
+    - Structured medication extraction (name, dosage, timing, frequency, status)
+    - Cloudinary integration for document storage
 
 - **Security**
 
@@ -297,6 +302,119 @@ The LLM service provides robust, production-ready language model interactions wi
 - **Wait Strategy**: Exponential backoff (1s, 2s, 4s)
 - **Logging**: All retry attempts are logged with context
 
+## 📋 Discharge Summary Parsing (Integrated with Patient Management)
+
+The patient creation endpoint includes integrated AI-powered parsing of discharge summary PDFs to automatically extract and structure medication information.
+
+### Simple Flow
+
+1. **Upload PDF** → Discharge summary PDF is uploaded to Cloudinary
+2. **Convert to Images** → PDF pages converted to images (for AI processing only)
+3. **AI Vision Parsing** → AI analyzes images and extracts structured medication data
+4. **Store in DB** → Extracted medications stored in `medication_details` field
+
+**Note:** Images are only used temporarily for AI processing and are not stored. Only the original PDF URL is saved.
+
+### Features
+
+- **Seamless Integration**: Upload discharge summary PDF during patient creation
+- **Automatic Parsing**: Medications are automatically extracted and stored in `medication_details`
+- **PDF Processing**: Automatic conversion of PDF pages to high-quality images using PyMuPDF (~180 DPI)
+- **AI Vision Parsing**: Direct image analysis using GPT-4 Vision for accurate extraction (10-15 seconds)
+- **Structured Data Extraction**: Medications with complete details:
+  - Name, dosage, start/end dates
+  - Timing (morning, afternoon, evening, night)
+  - Days of week (for specific schedules)
+  - Frequency (daily, alternate_days, twice_a_week, weekly, as_needed)
+  - Status (active, stopped, completed)
+  - Special instructions
+- **Cloud Storage**: Original PDF uploaded to Cloudinary (images not stored)
+- **No External Dependencies**: PyMuPDF is pure Python - no Poppler or system libraries needed!
+
+### Quick Start
+
+```bash
+# Install Python dependencies
+uv sync
+
+# Create patient with discharge summary PDF (medications auto-parsed)
+curl -X POST "http://localhost:8000/api/v1/patients" \
+  -F "patient_name=John Doe" \
+  -F "patient_contact=1234567890" \
+  -F "patient_email=john@example.com" \
+  -F "emergency_name=Jane Doe" \
+  -F "emergency_email=jane@example.com" \
+  -F "emergency_contact=0987654321" \
+  -F "admission_date=2024-11-10" \
+  -F "medical_condition=Post-surgery recovery" \
+  -F "assigned_doctor=Dr. Smith" \
+  -F "age=45" \
+  -F "gender=Male" \
+  -F "discharge_summary_pdf=@discharge_summary.pdf"
+```
+
+### Example Usage
+
+```python
+import requests
+
+# Create patient with discharge summary
+with open("discharge_summary.pdf", "rb") as pdf_file:
+    response = requests.post(
+        "http://localhost:8000/api/v1/patients",
+        files={"discharge_summary_pdf": pdf_file},
+        data={
+            "patient_name": "John Doe",
+            "patient_contact": "1234567890",
+            "patient_email": "john@example.com",
+            "emergency_name": "Jane Doe",
+            "emergency_email": "jane@example.com",
+            "emergency_contact": "0987654321",
+            "admission_date": "2024-11-10",
+            "medical_condition": "Post-surgery recovery",
+            "assigned_doctor": "Dr. Smith",
+            "age": 45,
+            "gender": "Male"
+        }
+    )
+
+result = response.json()
+# Medications are now in result["medication_details"]["medications"]
+for med in result["medication_details"]["medications"]:
+    print(f"{med['name']}: {med['dosage']} - {med['frequency']}")
+```
+
+### What Gets Stored
+
+When a discharge summary PDF is uploaded, the `medication_details` field is automatically populated with:
+
+```json
+{
+  "medications": [
+    {
+      "name": "Aspirin",
+      "dosage": "75mg",
+      "start_date": "2024-11-15",
+      "end_date": null,
+      "timing": ["morning"],
+      "days": [],
+      "frequency": "daily",
+      "status": "active",
+      "instructions": "Take with food"
+    }
+  ],
+  "source": "discharge_summary",
+  "parsed_at": "2024-11-14T10:30:00",
+  "discharge_summary_url": "https://cloudinary.com/.../discharge.pdf",
+  "patient_name_from_summary": "John Doe",
+  "discharge_date_from_summary": "2024-11-14",
+  "diagnosis": "Post-MI, Type 2 Diabetes",
+  "additional_notes": "Follow up in 2 weeks"
+}
+```
+
+**Note:** Images are only used for AI processing and are not stored. Only the original PDF URL is saved.
+
 ## 📝 Advanced Logging
 
 The application uses structlog for structured, contextual logging with automatic request tracking.
@@ -364,6 +482,10 @@ The application uses uvloop for enhanced async performance (automatically enable
 - `POST /api/v1/chatbot/chat/stream` - Send message with streaming response
 - `GET /api/v1/chatbot/history` - Get conversation history
 - `DELETE /api/v1/chatbot/history` - Clear chat history
+
+### Patient Management Endpoints
+
+- `POST /api/v1/patients` - Create a new patient record (supports discharge summary PDF upload with automatic parsing)
 
 ### Health & Monitoring
 

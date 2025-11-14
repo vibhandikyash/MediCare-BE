@@ -3,47 +3,22 @@
 import logging
 from datetime import date, datetime
 from fastapi import HTTPException, status
-from app.config.mongodb import patients_collection
+from app.config.supabase import get_supabase_client
 from app.schemas.patients import PatientCreate, PatientResponse
 
 logger = logging.getLogger(__name__)
 
-
 def serialize_dates_for_mongodb(data: dict) -> dict:
-    """
-    Convert datetime.date objects to datetime.datetime for MongoDB compatibility.
-    
-    MongoDB BSON doesn't support date objects, only datetime objects.
-    """
-    serialized = {}
+    """Convert date objects to ISO format strings for database storage."""
     for key, value in data.items():
-        if value is None:
-            serialized[key] = None
-        elif isinstance(value, date) and not isinstance(value, datetime):
-            # Convert date to datetime at midnight
-            serialized[key] = datetime.combine(value, datetime.min.time())
-        else:
-            serialized[key] = value
-    return serialized
-
-
-def deserialize_dates_from_mongodb(data: dict) -> dict:
-    """
-    Convert datetime.datetime objects back to datetime.date for Pydantic compatibility.
-    
-    When reading from MongoDB, dates are stored as datetime objects.
-    """
-    deserialized = {}
-    date_fields = ["admission_date", "discharge_date"]  # Fields that should be date objects
-    
-    for key, value in data.items():
-        if key in date_fields and isinstance(value, datetime):
-            # Convert datetime to date
-            deserialized[key] = value.date()
-        else:
-            deserialized[key] = value
-    return deserialized
-
+        if isinstance(value, (date, datetime)):
+            data[key] = value.isoformat()
+        elif isinstance(value, list):
+            data[key] = [
+                item.isoformat() if isinstance(item, (date, datetime)) else item
+                for item in value
+            ]
+    return data
 
 async def create_patient(patient: PatientCreate) -> PatientResponse:
     """Create a new patient record in the database."""
@@ -64,6 +39,7 @@ async def create_patient(patient: PatientCreate) -> PatientResponse:
             "messages": [],
             "conversation_summary": "",
             "appointment_followup": "",
+            "telegram_chat_id": None,
         }
         
         for key, default_value in defaults.items():
@@ -75,29 +51,23 @@ async def create_patient(patient: PatientCreate) -> PatientResponse:
         logger.debug("Serializing dates for MongoDB")
         patient_dict = serialize_dates_for_mongodb(patient_dict)
         
-        # Insert patient into MongoDB
-        logger.info("Inserting patient into MongoDB")
-        result = await patients_collection.insert_one(patient_dict)
-        logger.info(f"Patient inserted with MongoDB ID: {result.inserted_id}")
+        # Insert patient into Supabase
+        logger.info("Inserting patient into Supabase")
+        supabase = get_supabase_client()
+        result = supabase.table("patients").insert(patient_dict).execute()
         
-        # Fetch the created patient
-        logger.debug("Fetching created patient from MongoDB")
-        created_patient = await patients_collection.find_one({"_id": result.inserted_id})
-        
-        if not created_patient:
-            logger.error(f"Failed to retrieve created patient with ID: {result.inserted_id}")
+        if not result.data or len(result.data) == 0:
+            logger.error("Failed to create patient in Supabase")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to retrieve created patient"
+                detail="Failed to create patient"
             )
         
-        # Convert datetime back to date for Pydantic
-        logger.debug("Deserializing dates from MongoDB")
-        created_patient = deserialize_dates_from_mongodb(created_patient)
+        created_patient = result.data[0]
+        logger.info(f"Patient inserted with ID: {created_patient.get('id')}")
         
-        # Convert ObjectId to string for response
-        created_patient["_id"] = str(created_patient["_id"])
-        logger.debug("Converted ObjectId to string")
+        # Map 'id' to '_id' for PatientResponse compatibility
+        created_patient["_id"] = created_patient.get("id")
         
         logger.info("Creating PatientResponse object")
         response = PatientResponse(**created_patient)

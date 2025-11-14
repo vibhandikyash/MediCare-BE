@@ -1,5 +1,4 @@
 import logging
-from contextlib import asynccontextmanager
 from typing import (
     Any,
     Dict,
@@ -9,9 +8,12 @@ from fastapi import (
     Request,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from app.config.mongodb import connect_to_mongo, close_mongo_connection
+from dotenv import load_dotenv
 import app.config.cloudinary
 from app.api.v1.patients import router as patients_router
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -20,16 +22,8 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Manage application lifespan events."""
-    await connect_to_mongo()
-    yield
-    await close_mongo_connection()
-
 app = FastAPI(
     description="Medicare AI Assistant",
-    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -42,7 +36,6 @@ app.add_middleware(
 
 # Include API routers
 app.include_router(patients_router, prefix="/api/v1/patients")
-
 
 @app.get("/")
 async def root(request: Request):

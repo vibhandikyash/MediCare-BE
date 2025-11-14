@@ -1,6 +1,6 @@
 """Patient schemas for request/response validation."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, EmailStr
 
@@ -13,20 +13,22 @@ class PatientBase(BaseModel):
     emergency_name: str = Field(..., min_length=1, max_length=200, description="Emergency contact name")
     emergency_email: EmailStr = Field(..., description="Emergency contact email")
     emergency_contact: str = Field(..., min_length=10, max_length=10, description="10-digit emergency contact number")
-    patient_discharge_summary_pdf: str = Field(..., description="Patient discharge summary PDF file path or URL")
+    medication_details: Dict[str, Any] = Field(..., description="Medication details as JSONB")
     admission_date: date = Field(..., description="Date of patient admission")
     discharge_date: Optional[date] = Field(None, description="Date of patient discharge")
     medical_condition: str = Field(..., min_length=1, max_length=500, description="Patient's medical condition summary")
     assigned_doctor: str = Field(..., min_length=1, max_length=200, description="Doctor assigned to the patient")
     age: int = Field(..., ge=0, le=130, description="Patient age in years")
     gender: str = Field(..., min_length=1, max_length=50, description="Patient gender")
-    bill_details: List[str] = Field(default_factory=list, description="Array of bill PDF file paths or URLs")
-    reports: List[str] = Field(default_factory=list, description="Array of report PDF file paths or URLs")
-    doctor_notes: str = Field(default="", description="Doctor's notes")
+    bill_details: List[Any] = Field(default_factory=list, description="Array of bill details as JSONB")
+    reports: List[Any] = Field(default_factory=list, description="Array of reports as JSONB")
+    doctor_notes: str = Field(default="", description="Doctor's notes as String")
     doctor_medical_certificate: str = Field(default="", description="Doctor's medical certificate file path or URL")
-    messages: List[Dict[str, Any]] = Field(default_factory=list, description="Array of conversation messages")
+    messages: List[Dict[str, Any]] = Field(default_factory=list, description="Array of conversation messages as JSONB")
     conversation_summary: str = Field(default="", description="Summary of the conversation")
     appointment_followup: str = Field(default="", description="Appointment follow-up information")
+    telegram_chat_id: Optional[float] = Field(None, description="Telegram chat ID")
+    
     @field_validator("patient_contact", "emergency_contact")
     @classmethod
     def validate_numeric_string(cls, v: str, info) -> str:
@@ -49,20 +51,21 @@ class PatientUpdate(BaseModel):
     emergency_name: Optional[str] = Field(None, min_length=1, max_length=200, description="Emergency contact name")
     emergency_email: Optional[EmailStr] = Field(None, description="Emergency contact email")
     emergency_contact: Optional[str] = Field(None, min_length=10, max_length=10, description="10-digit emergency contact number")
-    patient_discharge_summary_pdf: Optional[str] = Field(None, description="Patient discharge summary PDF file path or URL")
+    medication_details: Optional[Dict[str, Any]] = Field(None, description="Medication details as JSONB")
     admission_date: Optional[date] = Field(None, description="Date of patient admission")
     discharge_date: Optional[date] = Field(None, description="Date of patient discharge")
     medical_condition: Optional[str] = Field(None, min_length=1, max_length=500, description="Patient's medical condition summary")
     assigned_doctor: Optional[str] = Field(None, min_length=1, max_length=200, description="Doctor assigned to the patient")
     age: Optional[int] = Field(None, ge=0, le=130, description="Patient age in years")
     gender: Optional[str] = Field(None, min_length=1, max_length=50, description="Patient gender")
-    bill_details: Optional[List[str]] = Field(None, description="Array of bill PDF file paths or URLs")
-    reports: Optional[List[str]] = Field(None, description="Array of report PDF file paths or URLs")
-    doctor_notes: Optional[str] = Field(None, description="Doctor's notes")
+    bill_details: Optional[List[Any]] = Field(None, description="Array of bill details as JSONB")
+    reports: Optional[List[Any]] = Field(None, description="Array of reports as JSONB")
+    doctor_notes: str = Field(default="", description="Doctor's notes as String")
     doctor_medical_certificate: Optional[str] = Field(None, description="Doctor's medical certificate file path or URL")
-    messages: Optional[List[Dict[str, Any]]] = Field(None, description="Array of conversation messages")
+    messages: Optional[List[Dict[str, Any]]] = Field(None, description="Array of conversation messages as JSONB")
     conversation_summary: Optional[str] = Field(None, description="Summary of the conversation")
     appointment_followup: Optional[str] = Field(None, description="Appointment follow-up information")
+    telegram_chat_id: Optional[float] = Field(None, description="Telegram chat ID")
 
     @field_validator("patient_contact", "emergency_contact")
     @classmethod
@@ -76,7 +79,9 @@ class PatientUpdate(BaseModel):
 class PatientResponse(PatientBase):
     """Schema for patient response."""
 
-    id: str = Field(..., alias="_id", description="MongoDB ObjectId")
+    id: str = Field(..., alias="_id", description="Supabase UUID")
+    created_at: Optional[datetime] = Field(None, description="Timestamp when patient was created")
+    updated_at: Optional[datetime] = Field(None, description="Timestamp when patient was last updated")
 
     class Config:
         """Pydantic config."""
