@@ -84,3 +84,39 @@ async def create_patient(patient: PatientCreate) -> PatientResponse:
             detail=f"Failed to create patient: {str(e)}"
         )
 
+
+async def get_all_patients() -> list[PatientResponse]:
+    """Get all patient records from the database."""
+    try:
+        logger.info("Fetching all patients from database")
+        
+        supabase = get_supabase_client()
+        result = supabase.table("patients").select("*").execute()
+        
+        if not result.data:
+            logger.info("No patients found in database")
+            return []
+        
+        logger.info(f"Found {len(result.data)} patients")
+        
+        # Convert each patient to PatientResponse
+        patients = []
+        for patient_data in result.data:
+            # Map 'id' to '_id' for PatientResponse compatibility
+            patient_data["_id"] = patient_data.get("id")
+            try:
+                patient = PatientResponse(**patient_data)
+                patients.append(patient)
+            except Exception as e:
+                logger.warning(f"Failed to parse patient {patient_data.get('id')}: {str(e)}")
+                continue
+        
+        logger.info(f"Successfully retrieved {len(patients)} patients")
+        return patients
+        
+    except Exception as e:
+        logger.error(f"Error fetching patients: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch patients: {str(e)}"
+        )

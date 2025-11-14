@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Optional, List
 from fastapi import APIRouter, status, Form, File, UploadFile, HTTPException
 from app.schemas.patients import PatientCreate, PatientResponse
-from app.services.patient_service import create_patient
+from app.services.patient_service import create_patient, get_all_patients
 from app.utils.cloudinary_service import upload_pdf_to_cloudinary, upload_multiple_pdfs_to_cloudinary
 from app.utils.pdf_service import process_pdf_discharge_summary
 from app.services.discharge_parser_service import parse_discharge_summary_with_vision
@@ -14,6 +14,37 @@ from pydantic import EmailStr
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["patients"])
+
+
+@router.get("", response_model=List[PatientResponse], status_code=status.HTTP_200_OK)
+async def get_all_patients_endpoint() -> List[PatientResponse]:
+    """
+    Get all patient records with their Cloudinary URLs.
+    
+    Returns all patient data including:
+    - bill_details: List of Cloudinary URLs for bill PDFs
+    - reports: List of Cloudinary URLs for report PDFs
+    - doctor_medical_certificate: Cloudinary URL for medical certificate
+    - medication_details: Contains discharge_summary_url if available
+    
+    All Cloudinary URLs are already stored in the database and are directly accessible.
+    """
+    try:
+        logger.info("Fetching all patients")
+        patients = await get_all_patients()
+        logger.info(f"Successfully retrieved {len(patients)} patients")
+        logger.debug(f"Patients: {patients}")
+        return patients
+        
+    except HTTPException:
+        logger.error("HTTPException raised in get_all_patients_endpoint", exc_info=True)
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in get_all_patients_endpoint: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Internal server error: {str(e)}"
+        )
 
 
 @router.post("", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
