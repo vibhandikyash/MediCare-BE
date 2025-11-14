@@ -1044,7 +1044,7 @@ dependencies = [
     { name = "tenacity" },
     { name = "tqdm" },
     { name = "uvicorn" },
-    { name = "uvloop" },
+    { name = "uvloop", marker = "sys_platform != 'win32'" },
 ]
 
 [package.optional-dependencies]
@@ -1100,7 +1100,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.1.2" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "uvicorn", specifier = ">=0.34.0" },
-    { name = "uvloop", specifier = ">=0.22.1" },
+    { name = "uvloop", marker = "sys_platform != 'win32'", specifier = ">=0.22.1" },
 ]
 provides-extras = ["dev"]
 
