@@ -5,7 +5,7 @@ import json
 import os
 import base64
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from fastapi import HTTPException, status
 import httpx
 from dotenv import load_dotenv
@@ -15,16 +15,126 @@ from app.schemas.medications import (
     DayEnum,
     FrequencyEnum,
     MedicationStatus,
+    Reminder,
 )
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-DISCHARGE_SUMMARY_PARSING_PROMPT = """
+def generate_reminders(
+    days: list[DayEnum],
+    timing: list[str],
+    frequency: FrequencyEnum,
+    start_date: Optional[date],
+    end_date: Optional[date],
+    ) -> list[Reminder]:
+    """
+    Generate reminders for a medication based on days, timing, frequency, and date range.
+    
+    Args:
+        days: List of days of the week
+        timing: List of times (e.g., ["10:00AM", "6:00PM"])
+        frequency: Frequency of medication
+        start_date: Start date for medication (defaults to tomorrow if not provided)
+        end_date: End date for medication (defaults to 30 days fromDefault start if not provided)
+    
+    Returns:
+        List of Reminder objects with calculated dates
+    """
+    # Don't create reminders for "as_needed" medications
+    if frequency == FrequencyEnum.AS_NEEDED:
+        return []
+    
+    reminders = []
+    
+    # Determine start and end dates
+    today = datetime.now().date()
+    if start_date is None:
+        start_date = today + timedelta(days=1)  #  to tomorrow
+    
+    if end_date is None:
+        end_date = start_date + timedelta(days=30)  # Default to 30 days from start
+    
+    # Ensure we have at least one time
+    if not timing:
+        timing = ["10:00AM"]  # Default time
+    
+    # Determine which days to use
+    days_to_use = []
+    if days:
+        # Use specified days
+        days_to_use = days
+    elif frequency == FrequencyEnum.DAILY:
+        # Daily means all days
+        days_to_use = list(DayEnum)
+    elif frequency == FrequencyEnum.TWICE_A_WEEK:
+        # Twice a week - use start_date day and 3 days later
+        start_day_index = start_date.weekday()  # 0=Monday, 6=Sunday
+        days_to_use = [
+            DayEnum(list(DayEnum)[start_day_index]),
+            DayEnum(list(DayEnum)[(start_day_index + 3) % 7])
+        ]
+    elif frequency == FrequencyEnum.WEEKLY:
+        # Weekly - use start_date day
+        start_day_index = start_date.weekday()
+        days_to_use = [DayEnum(list(DayEnum)[start_day_index])]
+    elif frequency == FrequencyEnum.ALTERNATE_DAYS:
+        # Alternate days - use all days but skip one
+        days_to_use = [DayEnum.MONDAY, DayEnum.WEDNESDAY, DayEnum.FRIDAY, DayEnum.SUNDAY]
+    else:
+        # For custom, use all days if no specific days provided
+        days_to_use = list(DayEnum)
+    
+    # Generate reminders for each day and time combination
+    current_date = start_date
+    
+    # Generate reminders for the date range
+    while current_date <= end_date:
+        current_day_index = current_date.weekday()  # 0=Monday, 6=Sunday
+        current_day_enum = DayEnum(list(DayEnum)[current_day_index])
+        
+        # Check if this day is in our days_to_use list
+        if current_day_enum in days_to_use:
+            # Create a reminder for each time on this day
+            for time_str in timing:
+                reminder = Reminder(
+                    day=current_day_enum,
+                    datte=current_date,
+                    time=time_str,
+                    isreminded=False,
+                    isresponded=False,
+                )
+                reminders.append(reminder)
+        
+        # Move to next day
+        current_date += timedelta(days=1)
+    
+    return reminders
+
+
+def get_discharge_summary_parsing_prompt() -> str:
+    """Generate the parsing prompt with current date context."""
+    today = datetime.now()
+    today_name = today.strftime("%A").lower()
+    tomorrow = today + timedelta(days=1)
+    tomorrow_name = tomorrow.strftime("%A").lower()
+    tomorrow_date = tomorrow.strftime("%Y-%m-%d")
+    
+    return f"""
 You are a medical document parser specialized in extracting medication information from discharge summaries.
 
 Your task is to parse the provided discharge summary and extract ALL medication information in a structured format.
+
+IMPORTANT CONTEXT:
+- Today is {today_name.capitalize()}
+- Starting from tomorrow ({tomorrow_name.capitalize()}, {tomorrow_date}), the patient's medications should begin
+- When determining start dates or scheduling medications, use {tomorrow_name.capitalize()} ({tomorrow_date}) as the starting point unless the document specifies otherwise
+
+Only Focus on discharge medications suggested by the doctor.
+CRITICAL RULES:
+- ONLY include medications that are PRESCRIBED or RECOMMENDED to be TAKEN
+- DO NOT include medications that are explicitly told to be STOPPED, AVOIDED, or DISCONTINUED should not be included in the result.
 
 For each medication, extract:
 1. **name**: Full medication name
@@ -35,7 +145,9 @@ For each medication, extract:
    - If "twice daily" or "two times a day" is mentioned, use ["10:00AM", "6:00PM"]
    - If "daily" or no specific time is mentioned, use ["10:00AM"] as default
    - If specific times are mentioned in the document, extract those exact times
-6. **days**: Array of specific days if applicable. Options: "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday" (empty array if daily or not specified)
+6. **days**: Array of specific days if applicable. Options: "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"
+   - For "daily" frequency: consider all days of the week starting from today 
+   - For "twice_a_week" or "weekly": consider days of the week starting from today according to the frequency
 7. **frequency**: How often to take. Options: "daily", "alternate_days", "twice_a_week", "weekly", "as_needed", "custom"
 8. **status**: Current status. Options: "active", "stopped", "completed"
 
@@ -43,12 +155,12 @@ Also extract:
 - **patient_name**: Patient's full name
 - **discharge_date**: Date of discharge (format: YYYY-MM-DD)
 - **diagnosis**: Primary diagnosis or condition
-- **additional_notes**: Any other relevant information
+- **additional_notes**: Any other relevant information, including warnings about medications to avoid
 
 IMPORTANT: Return ONLY a valid JSON object with this exact structure:
-{
+{{
     "medications": [
-        {
+        {{
             "name": "string",
             "dosage": "string",
             "start_date": "YYYY-MM-DD or null",
@@ -57,18 +169,18 @@ IMPORTANT: Return ONLY a valid JSON object with this exact structure:
             "days": [],
             "frequency": "daily",
             "status": "active",
-        }
+        }}
     ],
     "patient_name": "string or null",
     "discharge_date": "YYYY-MM-DD or null",
     "diagnosis": "string or null",
     "additional_notes": "string or null"
-}
+}}
 
 Do not include any explanations, markdown formatting, or additional text. Return ONLY the JSON object.
 """
 
-async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], model: str = "openai/gpt-4o") -> DischargeSummaryParsed:
+async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], model: str = "google/gemini-2.5-pro") -> DischargeSummaryParsed:
     """
     Parse discharge summary using vision model (image-based parsing only).
     """
@@ -92,10 +204,11 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
         # Strip whitespace from API key
         api_key = api_key.strip()
         # Prepare message content with images
+        prompt = get_discharge_summary_parsing_prompt()
         content = [
             {
                 "type": "text",
-                "text": DISCHARGE_SUMMARY_PARSING_PROMPT + "\n\nAnalyze the following discharge summary images:"
+                "text": prompt + "\n\nAnalyze the following discharge summary images:"
             }
         ]
         
@@ -243,19 +356,7 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
                     combined_text = f"{name_str} {dosage_str} {frequency_str}".lower()
                     
                     # Check if it's "twice daily" or similar patterns
-                    twice_daily_patterns = [
-                        "twice daily", "two times daily", "2 times daily", 
-                        "twice a day", "two times a day", "2 times a day",
-                        "bid", "b.i.d.", "twice per day"
-                    ]
                     
-                    is_twice_daily = any(pattern in combined_text for pattern in twice_daily_patterns)
-                    
-                    if is_twice_daily:
-                        timing = ["10:00AM", "6:00PM"]
-                    else:
-                        # Default to once daily at 10:00AM
-                        timing = ["10:00AM"]
                 
                 days = []
                 for d in med_data.get("days", []):
@@ -271,6 +372,15 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
                     except ValueError:
                         pass
                 
+                # Generate reminders for this medication
+                reminders = generate_reminders(
+                    days=days,
+                    timing=timing,
+                    frequency=frequency,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                
                 medication = MedicationDetail(
                     name=med_data.get("name") or "Unknown",
                     dosage=med_data.get("dosage") or "Not specified",
@@ -280,6 +390,7 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
                     days=days,
                     frequency=frequency,
                     status=status_val,
+                    reminders=reminders,
                 )
                 medications.append(medication)
             

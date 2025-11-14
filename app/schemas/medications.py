@@ -1,5 +1,6 @@
 """Medication schemas for discharge summary parsing."""
 
+from __future__ import annotations
 from datetime import date
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -42,6 +43,16 @@ class MedicationStatus(str, Enum):
     COMPLETED = "completed"
 
 
+class Reminder(BaseModel):
+    """Reminder for medication intake."""
+    
+    day: DayEnum = Field(..., description="Day of the week")
+    datte: date = Field(..., description="Actual date for this reminder")
+    time: str = Field(..., description="Time to take medication (e.g., '10:00AM', '6:00PM')")
+    isreminded: bool = Field(default=False, description="Whether reminder has been sent")
+    isresponded: bool = Field(default=False, description="Whether patient has responded to reminder")
+
+
 class MedicationDetail(BaseModel):
     """Detailed medication information extracted from discharge summary."""
     
@@ -53,6 +64,7 @@ class MedicationDetail(BaseModel):
     days: List[DayEnum] = Field(default_factory=list, description="Specific days of the week (if applicable)")
     frequency: FrequencyEnum = Field(FrequencyEnum.DAILY, description="Frequency of medication")
     status: MedicationStatus = Field(MedicationStatus.ACTIVE, description="Current status of medication")
+    reminders: List[Reminder] = Field(default_factory=list, description="List of reminders for this medication")
     
 class DischargeSummaryParsed(BaseModel):
     """Parsed data from discharge summary."""

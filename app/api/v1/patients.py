@@ -134,18 +134,29 @@ async def create_patient_endpoint(
                 logger.info("Step 3: Structuring medication data...")
                 medications_list = []
                 for med in parsed_data.medications:
+                    reminders_list = []
+                    for reminder in med.reminders:
+                        reminders_list.append({
+                            "day": reminder.day.value,
+                            "date": reminder.datte.isoformat(),
+                            "time": reminder.time,
+                            "isreminded": reminder.isreminded,
+                            "isresponded": reminder.isresponded,
+                        })
+                    
                     med_dict = {
                         "name": med.name,
                         "dosage": med.dosage,
                         "start_date": med.start_date.isoformat() if med.start_date else None,
                         "end_date": med.end_date.isoformat() if med.end_date else None,
-                        "timing": [t.value for t in med.timing],
+                        "timing": med.timing,
                         "days": [d.value for d in med.days],
                         "frequency": med.frequency.value,
                         "status": med.status.value,
+                        "reminders": reminders_list,
                     }
                     medications_list.append(med_dict)
-                    logger.debug(f"  - Medication: {med.name} ({med.dosage})")
+                    logger.debug(f"  - Medication: {med.name} ({med.dosage}) with {len(reminders_list)} reminders")
                 
                 # Structure medication_details
                 medication_details_dict = {
