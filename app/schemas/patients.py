@@ -1,25 +1,30 @@
 """Patient schemas for request/response validation."""
 
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator
-
+from datetime import date
+from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator, EmailStr
 
 class PatientBase(BaseModel):
     """Base patient schema with common fields."""
 
-    patient_id: str = Field(..., min_length=10, max_length=10, description="10-digit patient ID")
     patient_name: str = Field(..., min_length=1, max_length=200, description="Patient's full name")
-    patient_email: str = Field(..., min_length=1, max_length=200, description="Patient's email")
+    patient_contact: str = Field(..., min_length=10, max_length=10, description="10-digit patient contact number")
+    patient_email: EmailStr = Field(..., description="Patient's email")
     emergency_name: str = Field(..., min_length=1, max_length=200, description="Emergency contact name")
+    emergency_email: EmailStr = Field(..., description="Emergency contact email")
     emergency_contact: str = Field(..., min_length=10, max_length=10, description="10-digit emergency contact number")
-    patient_discharge_summary: Dict[str, Any] = Field(default_factory=dict, description="Patient discharge summary object")
-    bill_details: List[Dict[str, Any]] = Field(default_factory=list, description="Array of billing details")
-    medication_details: List[Dict[str, Any]] = Field(default_factory=list, description="Array of medication details")
-    messages: List[Dict[str, Any]] = Field(default_factory=list, description="Array of previous conversation messages")
-    conversation_summary: str = Field(default="", description="Summary of conversations")
-    appointment_followup: List[Dict[str, Any]] = Field(default_factory=list, description="Array of appointment follow-up details")
-
-    @field_validator("patient_id", "emergency_contact")
+    patient_discharge_summary_pdf: str = Field(..., description="Patient discharge summary PDF file path or URL")
+    admission_date: date = Field(..., description="Date of patient admission")
+    discharge_date: Optional[date] = Field(None, description="Date of patient discharge")
+    medical_condition: str = Field(..., min_length=1, max_length=500, description="Patient's medical condition summary")
+    assigned_doctor: str = Field(..., min_length=1, max_length=200, description="Doctor assigned to the patient")
+    age: int = Field(..., ge=0, le=130, description="Patient age in years")
+    gender: str = Field(..., min_length=1, max_length=50, description="Patient gender")
+    bill_details: List[str] = Field(default_factory=list, description="Array of bill PDF file paths or URLs")
+    reports: List[str] = Field(default_factory=list, description="Array of report PDF file paths or URLs")
+    doctor_notes: str = Field(default="", description="Doctor's notes")
+    doctor_medical_certificate: str = Field(default="", description="Doctor's medical certificate file path or URL")
+    @field_validator("patient_contact", "emergency_contact")
     @classmethod
     def validate_numeric_string(cls, v: str, info) -> str:
         """Validate that the string contains only digits."""
@@ -31,29 +36,34 @@ class PatientBase(BaseModel):
 class PatientCreate(PatientBase):
     """Schema for creating a new patient."""
 
-    pass
-
 
 class PatientUpdate(BaseModel):
     """Schema for updating a patient."""
 
-    patient_name: Optional[str] = Field(None, min_length=1, max_length=200)
-    patient_email: Optional[str] = Field(None, min_length=1, max_length=200)
-    emergency_name: Optional[str] = Field(None, min_length=1, max_length=200)
-    emergency_contact: Optional[str] = Field(None, min_length=10, max_length=10)
-    patient_discharge_summary: Optional[Dict[str, Any]] = None
-    bill_details: Optional[List[Dict[str, Any]]] = None
-    medication_details: Optional[List[Dict[str, Any]]] = None
-    messages: Optional[List[Dict[str, Any]]] = None
-    conversation_summary: Optional[str] = None
-    appointment_followup: Optional[List[Dict[str, Any]]] = None
+    patient_name: Optional[str] = Field(None, min_length=1, max_length=200, description="Patient's full name")
+    patient_contact: Optional[str] = Field(None, min_length=10, max_length=10, description="10-digit patient contact number")
+    patient_email: Optional[EmailStr] = Field(None, description="Patient's email")
+    emergency_name: Optional[str] = Field(None, min_length=1, max_length=200, description="Emergency contact name")
+    emergency_email: Optional[EmailStr] = Field(None, description="Emergency contact email")
+    emergency_contact: Optional[str] = Field(None, min_length=10, max_length=10, description="10-digit emergency contact number")
+    patient_discharge_summary_pdf: Optional[str] = Field(None, description="Patient discharge summary PDF file path or URL")
+    admission_date: Optional[date] = Field(None, description="Date of patient admission")
+    discharge_date: Optional[date] = Field(None, description="Date of patient discharge")
+    medical_condition: Optional[str] = Field(None, min_length=1, max_length=500, description="Patient's medical condition summary")
+    assigned_doctor: Optional[str] = Field(None, min_length=1, max_length=200, description="Doctor assigned to the patient")
+    age: Optional[int] = Field(None, ge=0, le=130, description="Patient age in years")
+    gender: Optional[str] = Field(None, min_length=1, max_length=50, description="Patient gender")
+    bill_details: Optional[List[str]] = Field(None, description="Array of bill PDF file paths or URLs")
+    reports: Optional[List[str]] = Field(None, description="Array of report PDF file paths or URLs")
+    doctor_notes: Optional[str] = Field(None, description="Doctor's notes")
+    doctor_medical_certificate: Optional[str] = Field(None, description="Doctor's medical certificate file path or URL")
 
-    @field_validator("emergency_contact")
+    @field_validator("patient_contact", "emergency_contact")
     @classmethod
-    def validate_emergency_contact(cls, v: Optional[str]) -> Optional[str]:
-        """Validate emergency contact if provided."""
+    def validate_contact_numbers(cls, v: Optional[str], info) -> Optional[str]:
+        """Validate contact numbers if provided."""
         if v is not None and not v.isdigit():
-            raise ValueError("emergency_contact must contain only digits")
+            raise ValueError(f"{info.field_name} must contain only digits")
         return v
 
 

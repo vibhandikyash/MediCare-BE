@@ -1,5 +1,4 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import (
     Any,
     Dict,
@@ -10,6 +9,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.mongodb import connect_to_mongo, close_mongo_connection
+from app.api.v1.patients import router as patients_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,10 +31,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include API routers
+app.include_router(patients_router, prefix="/api/v1/patients")
+
+
 @app.get("/")
 async def root(request: Request):
     """Root endpoint returning basic API information."""
     return {"name": "Medicare AI Assistant", "version": "0.1.0", "status": "healthy"}
+
 
 @app.get("/health")
 async def health_check(request: Request) -> Dict[str, Any]:
