@@ -1,24 +1,18 @@
 """This file contains the thread model for the application."""
 
-from datetime import (
-    UTC,
-    datetime,
-)
+from datetime import UTC, datetime
+from typing import Optional
+from pydantic import Field
 
-from sqlmodel import (
-    Field,
-    SQLModel,
-)
+from app.models.base import BaseModel
 
 
-class Thread(SQLModel, table=True):
+class Thread(BaseModel):
     """Thread model for storing conversation threads.
 
     Attributes:
-        id: The primary key
+        id: MongoDB ObjectId as string
         created_at: When the thread was created
-        messages: Relationship to messages in this thread
     """
 
-    id: str = Field(primary_key=True)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    id: Optional[str] = Field(default=None, alias="_id")
