@@ -1,7 +1,7 @@
 """Patient schemas for request/response validation."""
 
 from datetime import date
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, EmailStr
 
 class PatientBase(BaseModel):
@@ -24,6 +24,9 @@ class PatientBase(BaseModel):
     reports: List[str] = Field(default_factory=list, description="Array of report PDF file paths or URLs")
     doctor_notes: str = Field(default="", description="Doctor's notes")
     doctor_medical_certificate: str = Field(default="", description="Doctor's medical certificate file path or URL")
+    messages: List[Dict[str, Any]] = Field(default_factory=list, description="Array of conversation messages")
+    conversation_summary: str = Field(default="", description="Summary of the conversation")
+    appointment_followup: str = Field(default="", description="Appointment follow-up information")
     @field_validator("patient_contact", "emergency_contact")
     @classmethod
     def validate_numeric_string(cls, v: str, info) -> str:
@@ -57,6 +60,9 @@ class PatientUpdate(BaseModel):
     reports: Optional[List[str]] = Field(None, description="Array of report PDF file paths or URLs")
     doctor_notes: Optional[str] = Field(None, description="Doctor's notes")
     doctor_medical_certificate: Optional[str] = Field(None, description="Doctor's medical certificate file path or URL")
+    messages: Optional[List[Dict[str, Any]]] = Field(None, description="Array of conversation messages")
+    conversation_summary: Optional[str] = Field(None, description="Summary of the conversation")
+    appointment_followup: Optional[str] = Field(None, description="Appointment follow-up information")
 
     @field_validator("patient_contact", "emergency_contact")
     @classmethod

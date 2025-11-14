@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 from typing import (
     Any,
@@ -9,7 +10,15 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.mongodb import connect_to_mongo, close_mongo_connection
+import app.config.cloudinary
 from app.api.v1.patients import router as patients_router
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

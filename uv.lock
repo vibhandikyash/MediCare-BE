@@ -287,6 +287,20 @@ wheels = [
 ]
 
 [[package]]
+name = "cloudinary"
+version = "1.44.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "certifi" },
+    { name = "six" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/32/35/938a4cc3b5ac386184a8ea50e357cdbb4239c2744fc8c652c461674447e6/cloudinary-1.44.1.tar.gz", hash = "sha256:62d4374b79d5476de2a86cb6a1da709a5429e02aef474bfc5d99f3e38a1a62ff", size = 188225 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/f0/518d151d3dfc009940947fe9b26cdf9f6e2fb9e4a29c12fe5b5ebe8aad65/cloudinary-1.44.1-py3-none-any.whl", hash = "sha256:b4785031179a5ec7010f46665e5c8fad2cae022c18405546f01d257e02f78b1c", size = 147808 },
+]
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1016,6 +1030,7 @@ dependencies = [
     { name = "asgiref" },
     { name = "bcrypt" },
     { name = "certifi" },
+    { name = "cloudinary" },
     { name = "colorama" },
     { name = "ddgs" },
     { name = "duckduckgo-search" },
@@ -1070,6 +1085,7 @@ requires-dist = [
     { name = "bcrypt", specifier = ">=4.3.0" },
     { name = "black", marker = "extra == 'dev'" },
     { name = "certifi", specifier = ">=2024.0.0" },
+    { name = "cloudinary", specifier = ">=1.41.0" },
     { name = "colorama", specifier = ">=0.4.6" },
     { name = "ddgs", specifier = ">=9.6.0" },
     { name = "djlint", marker = "extra == 'dev'", specifier = "==1.36.4" },
