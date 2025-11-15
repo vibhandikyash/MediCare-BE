@@ -281,22 +281,24 @@ async def process_pdf_bill(pdf_file: UploadFile, patient_name: str) -> Tuple[str
             detail=f"Failed to process bill: {str(e)}"
         )
 
-async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optional[str]:
+async def convert_markdown_to_pdf(markdown_content: str, patient_name: str, folder_suffix: str = "action_plans") -> Optional[str]:
     """
-    Generate a PDF from markdown action_plan by converting markdown to HTML, then to PDF and upload to Cloudinary.
+    Convert markdown content to PDF and upload to Cloudinary.
+    Reusable function for converting any markdown to PDF.
     
     Args:
-        action_plan: Action plan markdown content
+        markdown_content: Markdown content to convert
         patient_name: Patient name for folder organization
+        folder_suffix: Folder suffix for Cloudinary (e.g., "action_plans", "justifications")
     
     Returns:
-        str: Cloudinary URL of the uploaded PDF, or None if action_plan is empty
+        str: Cloudinary URL of the uploaded PDF, or None if markdown_content is empty
     
     Raises:
         HTTPException: If PDF generation or upload fails
     """
-    if not action_plan or not action_plan.strip():
-        logger.info("No action plan provided, skipping PDF generation")
+    if not markdown_content or not markdown_content.strip():
+        logger.info(f"No markdown content provided, skipping PDF generation for {folder_suffix}")
         return None
     
     try:
@@ -305,9 +307,9 @@ async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optio
         from xhtml2pdf import pisa
         
         # Step 1: Convert markdown to HTML
-        logger.info("Step 1: Converting markdown to HTML...")
+        logger.info(f"Step 1: Converting markdown to HTML for {folder_suffix}...")
         html_content = markdown.markdown(
-            action_plan,
+            markdown_content,
             extensions=['extra', 'nl2br', 'sane_lists']
         )
         
@@ -383,7 +385,7 @@ async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optio
 </html>"""
         
         # Step 2: Convert HTML to PDF bytes using xhtml2pdf
-        logger.info("Step 2: Converting HTML to PDF...")
+        logger.info(f"Step 2: Converting HTML to PDF for {folder_suffix}...")
         pdf_buffer = io.BytesIO()
         pisa_status = pisa.CreatePDF(
             src=html_document,
@@ -404,9 +406,9 @@ async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optio
         
         # Step 3: Upload PDF to Cloudinary
         folder_name = patient_name.replace(' ', '_')
-        folder = f"medicare/patients/{folder_name}/action_plans"
+        folder = f"medicare/patients/{folder_name}/{folder_suffix}"
         
-        logger.info(f"Step 3: Uploading action plan PDF to Cloudinary folder: {folder}")
+        logger.info(f"Step 3: Uploading PDF to Cloudinary folder: {folder}")
         upload_result = cloudinary.uploader.upload(
             pdf_bytes,
             folder=folder,
@@ -425,7 +427,7 @@ async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optio
             cloud_name = upload_result.get("cloud_name") or os.getenv("CLOUDINARY_CLOUD_NAME")
             pdf_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{public_id}.pdf"
         
-        logger.info(f"Action plan PDF uploaded: {pdf_url}")
+        logger.info(f"PDF uploaded: {pdf_url}")
         return pdf_url
         
     except ImportError as e:
@@ -438,8 +440,25 @@ async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optio
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error generating action plan PDF: {str(e)}", exc_info=True)
+        logger.error(f"Error generating PDF: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate action plan PDF: {str(e)}"
+            detail=f"Failed to generate PDF: {str(e)}"
         )
+
+
+async def generate_action_plan_pdf(action_plan: str, patient_name: str) -> Optional[str]:
+    """
+    Generate a PDF from markdown action_plan by converting markdown to HTML, then to PDF and upload to Cloudinary.
+    
+    Args:
+        action_plan: Action plan markdown content
+        patient_name: Patient name for folder organization
+    
+    Returns:
+        str: Cloudinary URL of the uploaded PDF, or None if action_plan is empty
+    
+    Raises:
+        HTTPException: If PDF generation or upload fails
+    """
+    return await convert_markdown_to_pdf(action_plan, patient_name, "action_plans")

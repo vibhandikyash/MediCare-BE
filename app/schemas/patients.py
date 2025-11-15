@@ -44,6 +44,7 @@ class PatientBase(BaseModel):
     conversation_summary: str = Field(default="", description="Summary of the conversation")
     appointment_followup: List[Followup] = Field(default_factory=list, description="List of appointment followups")
     telegram_chat_id: Optional[float] = Field(None, description="Telegram chat ID")
+    insurer_justification_pdf_url: Optional[str] = Field(None, description="Cloudinary URL of the insurer justification document PDF")
     
     @field_validator("patient_contact", "emergency_contact")
     @classmethod
@@ -82,7 +83,8 @@ class PatientUpdate(BaseModel):
     conversation_summary: Optional[str] = Field(None, description="Summary of the conversation")
     appointment_followup: Optional[List[Followup]] = Field(None, description="List of appointment followups")
     telegram_chat_id: Optional[float] = Field(None, description="Telegram chat ID")
-
+    insurer_justification_pdf_url: Optional[str] = Field(None, description="Cloudinary URL of the insurer justification document PDF")
+    
     @field_validator("patient_contact", "emergency_contact")
     @classmethod
     def validate_contact_numbers(cls, v: Optional[str], info) -> Optional[str]:

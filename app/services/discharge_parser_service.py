@@ -4,6 +4,7 @@ import logging
 import json
 import os
 import base64
+import re
 from typing import Optional
 from datetime import datetime, date, timedelta
 from fastapi import HTTPException, status
@@ -306,6 +307,146 @@ IMPORTANT: Return ONLY a valid JSON object with this exact structure:
 Do not include any explanations, markdown formatting, or additional text. Return ONLY the JSON object.
 """
 
+
+def robust_json_parse(text: str) -> dict:
+    """
+    Robustly parse JSON from LLM response, handling various edge cases.
+    
+    Args:
+        text: Raw text response from LLM that may contain JSON
+        
+    Returns:
+        Parsed JSON dictionary
+        
+    Raises:
+        HTTPException: If JSON cannot be parsed after all attempts
+    """
+    original_text = text
+    
+    # Strategy 1: Remove markdown code blocks (multiple patterns)
+    # Handle ```json ... ```, ``` ... ```, ```JSON ... ```
+    text = re.sub(r'^```(?:json|JSON)?\s*\n?', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\n?```\s*$', '', text, flags=re.MULTILINE)
+    text = text.strip()
+    
+    # Strategy 2: Extract JSON object from text (find first { ... })
+    json_match = re.search(r'\{.*\}', text, re.DOTALL)
+    if json_match:
+        text = json_match.group(0)
+    
+    # Strategy 3: Remove common JSON-invalid characters
+    # Remove trailing commas before closing braces/brackets
+    text = re.sub(r',(\s*[}\]])', r'\1', text)
+    
+    # Strategy 4: Remove single-line comments (// ...)
+    text = re.sub(r'//.*?$', '', text, flags=re.MULTILINE)
+    
+    # Strategy 5: Remove multi-line comments (/* ... */)
+    text = re.sub(r'/\*.*?\*/', '', text, flags=re.DOTALL)
+    
+    # Strategy 6: Fix common escape issues
+    # Ensure proper escaping of quotes within strings
+    # This is tricky, so we'll try parsing first
+    
+    # Try parsing with cleaned text
+    attempts = [
+        ("Cleaned text", text),
+        ("Original text", original_text),
+        ("Text with trailing comma fix", re.sub(r',(\s*[}\]])', r'\1', original_text)),
+    ]
+    
+    for attempt_name, attempt_text in attempts:
+        try:
+            # Try direct JSON parsing
+            parsed = json.loads(attempt_text)
+            logger.info(f"Successfully parsed JSON using: {attempt_name}")
+            return parsed
+        except json.JSONDecodeError as e:
+            logger.debug(f"JSON parse attempt '{attempt_name}' failed: {str(e)}")
+            continue
+    
+    # Strategy 7: Try to fix common issues and parse again
+    try:
+        # Use the cleaned text from earlier
+        attempt_text = text
+        
+        # Remove any text before first {
+        first_brace = attempt_text.find('{')
+        if first_brace > 0:
+            attempt_text = attempt_text[first_brace:]
+        
+        # Remove any text after last }
+        last_brace = attempt_text.rfind('}')
+        if last_brace > 0 and last_brace < len(attempt_text) - 1:
+            attempt_text = attempt_text[:last_brace + 1]
+        
+        # Fix trailing commas
+        attempt_text = re.sub(r',(\s*[}\]])', r'\1', attempt_text)
+        
+        parsed = json.loads(attempt_text)
+        logger.info("Successfully parsed JSON after aggressive cleaning")
+        return parsed
+    except json.JSONDecodeError:
+        pass
+    
+    # Strategy 8: Try using json5-like fixes (if available) or manual fixes
+    # This is more aggressive and should only be used as last resort
+    try:
+        # Use the cleaned text from earlier
+        attempt_text = text
+        
+        # Remove any text before first {
+        first_brace = attempt_text.find('{')
+        if first_brace > 0:
+            attempt_text = attempt_text[first_brace:]
+        
+        # Remove any text after last }
+        last_brace = attempt_text.rfind('}')
+        if last_brace > 0 and last_brace < len(attempt_text) - 1:
+            attempt_text = attempt_text[:last_brace + 1]
+        
+        # Fix single quotes to double quotes (but preserve escaped quotes)
+        # Only replace single quotes that appear to be string delimiters
+        attempt_text = re.sub(r"'([^']*)'", r'"\1"', attempt_text)
+        
+        # Fix trailing commas again
+        attempt_text = re.sub(r',(\s*[}\]])', r'\1', attempt_text)
+        
+        parsed = json.loads(attempt_text)
+        logger.info("Successfully parsed JSON after quote fixes")
+        return parsed
+    except json.JSONDecodeError:
+        pass
+    
+    # If all strategies fail, log the error and raise exception
+    logger.error(f"Failed to parse JSON after all attempts")
+    logger.error(f"Original text length: {len(original_text)}")
+    logger.error(f"Original text preview (first 500 chars): {original_text[:500]}")
+    logger.error(f"Cleaned text preview (first 500 chars): {text[:500]}")
+    
+    # Try to provide helpful error message
+    try:
+        # One last attempt: try to find and show the JSON error location
+        json.loads(text)
+    except json.JSONDecodeError as e:
+        error_msg = f"JSON parsing failed: {str(e)}"
+        if hasattr(e, 'pos') and e.pos:
+            start = max(0, e.pos - 50)
+            end = min(len(text), e.pos + 50)
+            error_msg += f"\nError near position {e.pos}: ...{text[start:end]}..."
+        
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI returned invalid JSON that could not be parsed. {error_msg}"
+        )
+    
+    # Fallback (shouldn't reach here)
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="AI returned invalid JSON that could not be parsed after multiple attempts"
+    )
+
+
 async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], model: str = "google/gemini-2.5-pro") -> DischargeSummaryParsed:
     """
     Parse discharge summary using vision model (image-based parsing only).
@@ -415,24 +556,19 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
         logger.info(f"Vision model response received: {len(response_text)} characters")
         logger.debug(f"Response preview: {response_text[:200]}...")
         
-        # Parse JSON response
+        # Parse JSON response using robust parser
         try:
-            # Remove markdown code blocks if present
-            if response_text.startswith("```"):
-                response_text = response_text.split("```")[1]
-                if response_text.startswith("json"):
-                    response_text = response_text[4:]
-                response_text = response_text.strip()
-            
-            parsed_json = json.loads(response_text)
+            parsed_json = robust_json_parse(response_text)
             logger.info("Successfully parsed AI response to JSON")
-            
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse AI response as JSON: {str(e)}")
-            logger.error(f"Response text: {response_text}")
+        except HTTPException:
+            # Re-raise HTTP exceptions from robust_json_parse
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error during JSON parsing: {str(e)}")
+            logger.error(f"Response text: {response_text[:500]}...")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"AI returned invalid JSON: {str(e)}"
+                detail=f"Failed to parse AI response: {str(e)}"
             )
         
         # Convert JSON to Pydantic model

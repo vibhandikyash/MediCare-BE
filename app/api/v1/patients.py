@@ -12,6 +12,7 @@ from app.utils.pdf_service import process_pdf_discharge_summary, process_pdf_rep
 from app.services.discharge_parser_service import parse_discharge_summary_with_vision
 from app.services.report_parser_service import parse_report_with_vision
 from app.services.bill_parser_service import parse_bill_with_vision
+from app.services.justification_service import generate_insurer_justification_document
 from pydantic import EmailStr
 
 logger = logging.getLogger(__name__)
@@ -352,6 +353,37 @@ async def create_patient_endpoint(
             appointment_followups = parsed_data.appointment_followup
             logger.info(f"Extracted {len(appointment_followups)} appointment followups from discharge summary")
         
+        # Generate insurer justification document
+        justification_pdf_url = None
+        try:
+            logger.info("=== GENERATING INSURER JUSTIFICATION DOCUMENT ===")
+            discharge_date_str = discharge_date.strftime("%Y-%m-%d") if discharge_date else None
+            admission_date_str = admission_date.strftime("%Y-%m-%d")
+            
+            justification_pdf_url = await generate_insurer_justification_document(
+                patient_name=patient_name,
+                medical_condition=medical_condition,
+                admission_date=admission_date_str,
+                discharge_date=discharge_date_str,
+                age=age,
+                gender=gender,
+                assigned_doctor=assigned_doctor,
+                medication_details=medication_details_dict,
+                bill_details=bills_list,
+                reports=reports_list,
+                doctor_notes=doctor_notes,
+            )
+            
+            if justification_pdf_url:
+                logger.info(f"✓ Insurer justification document generated: {justification_pdf_url}")
+            else:
+                logger.warning("⚠ Insurer justification document generation returned None (continuing anyway)")
+        except Exception as e:
+            logger.error(f"Error generating insurer justification document: {str(e)}", exc_info=True)
+            logger.warning("⚠ Continuing with patient creation despite justification document generation failure")
+            # Don't fail the whole process if justification generation fails
+            justification_pdf_url = None
+        
         # Create patient data
         logger.info("Creating PatientCreate object with medication_details")
         logger.debug(f"medication_details contains {len(medication_details_dict.get('medications', []))} medications")
@@ -376,6 +408,7 @@ async def create_patient_endpoint(
             doctor_medical_certificate=medical_certificate_url,
             appointment_followup=appointment_followups,
             telegram_chat_id=telegram_chat_id,
+            insurer_justification_pdf_url=justification_pdf_url,
         )
         
         logger.info("Calling create_patient service to save to database")
