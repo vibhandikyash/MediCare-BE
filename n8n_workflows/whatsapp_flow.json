@@ -1,0 +1,414 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.query[\"hub.challenge\"] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        432,
+        -32
+      ],
+      "id": "30329842-df48-4d6a-8585-178ddbac5cda",
+      "name": "Respond to Webhook1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body\n\nreturn body"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        368
+      ],
+      "id": "6cfddb05-790a-4db1-bceb-2d5b57f22fb1",
+      "name": "Webhook body Payload",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "multipleMethods": true,
+        "path": "chat",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        32,
+        352
+      ],
+      "id": "c3981b63-7337-4076-b811-5516fc66673a",
+      "name": "Webhook",
+      "webhookId": "6ec8c15d-cc7b-4bd6-9f47-342692b3b0f6"
+    },
+    {
+      "parameters": {
+        "content": "## Check message is of a patient\n#### If not then dont reply\n",
+        "height": 336,
+        "width": 576,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        560,
+        240
+      ],
+      "typeVersion": 1,
+      "id": "2107ad7e-79bd-45dc-b8d7-0e2f1bc073c3",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/858014624062616/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAK6ZBPU9eZAUBPxlZCGJkM2IAAWnIRuqECjApZCJ78uTvEgjE4ZCDZBnMkwRwMI6Go4TfZAEVQhYRSVIvRhqxoxXDdHL1lFawfi7R0IAxrGatgz40YKyxmbHu3SEb0edf2VZBUeC9pPJZBn7TVIcPGr65DO8kAlafItMrjKxvWvxXmB9v1QV02lwXgpDEQDybpvY6wZDZD"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": {{ JSON.stringify($('Webhook body Payload').first().json.entry[0].changes[0].value.contacts[0].wa_id) }},\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($json.output.response) }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1456,
+        368
+      ],
+      "id": "29d582a3-1021-4473-aec8-8eb697542896",
+      "name": "Reply Back"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "patient_contact",
+              "keyValue": "={{ $json.entry[0].changes[0].value.contacts[0].wa_id.slice(-10) }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        592,
+        368
+      ],
+      "id": "45fc2166-a2af-4451-a0e6-af065160d82e",
+      "name": "Get a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let messages = $input.first().json.messages;\n\nconsole.log(typeof(messages))\n\nconst current_message = $('Webhook body Payload')\n    .first()\n    .json\n    .entry[0]\n    .changes[0]\n    .value\n    .messages[0]\n    .text\n    .body;\n\n// Normalize messages to always be an array\nif (!Array.isArray(messages)) {\n    messages = [];\n}\n\n// Append new user message\nmessages.push({\n    message: current_message,\n    role: \"user\",\n    timestamp: new Date().toISOString()\n});\n\nreturn {\n    messages\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        784,
+        368
+      ],
+      "id": "a9bb2d9b-6a31-4bf2-9d3a-0bb222cfa7cd",
+      "name": "Messages"
+    },
+    {
+      "parameters": {
+        "jsCode": "let messages = $('Update Messages with user').first().json.messages\nconst ai_message = $('Call \\'LLM Brain\\'').first().json.output.response\n\n// Normalize messages to always be an array\nif (!Array.isArray(messages)) {\n    messages = [];\n}\n\n// Append new user message\nmessages.push({\n    message: ai_message,\n    role: \"ai\",\n    timestamp: new Date().toISOString()\n});\n\nreturn {\n    messages\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1664,
+        368
+      ],
+      "id": "afcc3d23-be23-4d3c-ac9f-2b601854f835",
+      "name": "Messages1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "patient_contact",
+              "condition": "eq",
+              "keyValue": "={{ $('Webhook body Payload').first().json.entry[0].changes[0].value.contacts[0].wa_id.slice(-10) }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "messages",
+              "fieldValue": "={{ $json.messages }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        992,
+        368
+      ],
+      "id": "ff546e67-2bb1-479c-9303-81827c73156c",
+      "name": "Update Messages with user",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "patient_contact",
+              "condition": "eq",
+              "keyValue": "={{ $('Webhook body Payload').first().json.entry[0].changes[0].value.contacts[0].wa_id.slice(-10) }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "messages",
+              "fieldValue": "={{ $json.messages }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1872,
+        368
+      ],
+      "id": "a8a50e08-65a1-4f28-9c67-d3f10c81e613",
+      "name": "Update messages with AI1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Hitl09eSXIkACO05",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/Hitl09eSXIkACO05",
+          "cachedResultName": "LLM Brain"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {}
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1216,
+        368
+      ],
+      "id": "fca83506-7aef-43ab-9ad8-6ac327d34b58",
+      "name": "Call 'LLM Brain'"
+    }
+  ],
+  "connections": {
+    "Webhook body Payload": {
+      "main": [
+        [
+          {
+            "node": "Get a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Webhook body Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reply Back": {
+      "main": [
+        [
+          {
+            "node": "Messages1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a row": {
+      "main": [
+        [
+          {
+            "node": "Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Messages": {
+      "main": [
+        [
+          {
+            "node": "Update Messages with user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Messages1": {
+      "main": [
+        [
+          {
+            "node": "Update messages with AI1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Messages with user": {
+      "main": [
+        [
+          {
+            "node": "Call 'LLM Brain'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'LLM Brain'": {
+      "main": [
+        [
+          {
+            "node": "Reply Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook": [
+      {
+        "headers": {
+          "host": "priyanshcloud.app.n8n.cloud",
+          "user-agent": "facebookexternalua",
+          "content-length": "495",
+          "accept": "*/*",
+          "accept-encoding": "gzip, br",
+          "cdn-loop": "cloudflare; loops=1; subreqs=1",
+          "cf-connecting-ip": "2a03:2880:10ff:1::",
+          "cf-ew-via": "15",
+          "cf-ipcountry": "US",
+          "cf-ray": "99ed3a38f6275618-DFW",
+          "cf-visitor": "{\"scheme\":\"https\"}",
+          "cf-worker": "n8n.cloud",
+          "content-type": "application/json",
+          "x-forwarded-for": "2a03:2880:10ff:1::, 162.159.104.72",
+          "x-forwarded-host": "priyanshcloud.app.n8n.cloud",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "traefik-prod-users-gwc-3-6db8488cf7-vdndp",
+          "x-hub-signature": "sha1=fd180bdb87a5fe8350b14e7ff0a39924d2993758",
+          "x-hub-signature-256": "sha256=81812c0abe904e6d547cb60464fc8254d44dadbb6d0cec11537c7ae90b5ede17",
+          "x-is-trusted": "yes",
+          "x-real-ip": "2a03:2880:10ff:1::"
+        },
+        "params": {},
+        "query": {},
+        "body": {
+          "object": "whatsapp_business_account",
+          "entry": [
+            {
+              "id": "1324069612751024",
+              "changes": [
+                {
+                  "value": {
+                    "messaging_product": "whatsapp",
+                    "metadata": {
+                      "display_phone_number": "15551813693",
+                      "phone_number_id": "858014624062616"
+                    },
+                    "contacts": [
+                      {
+                        "profile": {
+                          "name": "priyansh"
+                        },
+                        "wa_id": "917043912784"
+                      }
+                    ],
+                    "messages": [
+                      {
+                        "from": "917043912784",
+                        "id": "wamid.HBgMOTE3MDQzOTEyNzg0FQIAEhggQUMwQjQzMzJBODIyODJCQTZCQzc3NjEyOEE2OTgzQ0YA",
+                        "timestamp": "1763193756",
+                        "text": {
+                          "body": "Make it 7 pm"
+                        },
+                        "type": "text"
+                      }
+                    ]
+                  },
+                  "field": "messages"
+                }
+              ]
+            }
+          ]
+        },
+        "webhookUrl": "https://priyanshcloud.app.n8n.cloud/webhook/chat",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f53f576ce84faf96af7ca2fa4a524c876d6ba4651f9e0c15dfb49aef0653f7e"
+  }
+}

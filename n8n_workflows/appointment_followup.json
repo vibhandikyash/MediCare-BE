@@ -1,0 +1,5588 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -208,
+        16
+      ],
+      "id": "5899b192-8613-488d-aaa9-fbcd247e02b6",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "patients",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        0,
+        16
+      ],
+      "id": "b4f94cee-b83b-4bb2-a7b4-a1e2810c2954",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all();\nconst today = new Date();\ntoday.setHours(0, 0, 0, 0);\nconst filteredData = data.filter(item => {\n  if (!item.json.appointment_followup || !Array.isArray(item.json.appointment_followup)) {\n    return false;\n  }\n  return item.json.appointment_followup.some(followup => {\n    if (followup.status !== \"not_confirmed\") {\n      return false;\n    }\n    const followupDate = new Date(followup.followup_date);\n    followupDate.setHours(0, 0, 0, 0);\n    const diffDays = Math.ceil((followupDate - today) / (1000 * 60 * 60 * 24));\n    return (!followup.isreminder1sent && diffDays === 2) || \n           (!followup.isreminder2sent && diffDays === 1);\n  });\n});\nconst temp = filteredData.map(item => {\n  // Find the matching followup\n  const matchedFollowup = item.json.appointment_followup.find(followup => {\n    if (followup.status !== \"not_confirmed\") return false;\n    const followupDate = new Date(followup.followup_date);\n    followupDate.setHours(0, 0, 0, 0);\n    const diffDays = Math.ceil((followupDate - today) / (1000 * 60 * 60 * 24));\n    return (!followup.isreminder1sent && diffDays === 2) || \n           (!followup.isreminder2sent && diffDays === 1);\n  });\n  // Determine if this is reminder 1 or 2\n  const followupDate = new Date(matchedFollowup.followup_date);\n  followupDate.setHours(0, 0, 0, 0);\n  const diffDays = Math.ceil((followupDate - today) / (1000 * 60 * 60 * 24));\n  const isReminder1 = diffDays === 2;\n  const reminderType = isReminder1 ? \"\" : \"\";\n  const daysText = isReminder1 ? \"2 days\" : \"tomorrow\";\n  \n  // Use the original date string from the data\n  const formattedDate = matchedFollowup.followup_date;\n  \n  // Generate message based on reason\n  const reason = matchedFollowup.reason || \"follow-up appointment\";\n  \n  let message = `Hello! This is your reminder about your ${reason} scheduled for ${formattedDate} (${daysText} from now). `;\n  \n  if (isReminder1) {\n    message += `Would you like to book an appointment?`;\n  } else {\n    message += `Would you like to book an appointment?`;\n  }\n  // Create updated appointment_followup array with the reminder flag set\n  const updatedFollowups = item.json.appointment_followup.map(followup => {\n    // If this is the matched followup, update the appropriate reminder flag\n    if (followup.followup_date === matchedFollowup.followup_date && \n        followup.reason === matchedFollowup.reason) {\n      return {\n        ...followup,\n        isreminder1sent: isReminder1 ? true : followup.isreminder1sent,\n        isreminder2sent: isReminder1 ? followup.isreminder2sent : true\n      };\n    }\n    return followup;\n  });\n  \n  // Create new message object\n  const newMessage = {\n    role: \"follow_appointment\",\n    message: message,\n    timestamp: new Date().toISOString()\n  };\n  \n  // Add new message to existing messages array\n  const updatedMessages = [\n    ...(item.json.messages || []),\n    newMessage\n  ];\n  \n  // Create the complete updated data object\n  const updatedData = {\n    appointment_followup: updatedFollowups,\n    messages: updatedMessages\n  };\n  \n  return {\n    contact: item.json.patient_contact,\n    message: message,\n    followup_date: matchedFollowup.followup_date,\n    reason: matchedFollowup.reason,\n    reminder_type: isReminder1 ? 1 : 2,\n    updated_followups: updatedData\n  };\n});\nreturn temp;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        16
+      ],
+      "id": "a1fa838e-8f7d-41d8-b2df-a41d2e9a3eee",
+      "name": "Appointment Followup"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "patient_contact",
+              "condition": "eq",
+              "keyValue": "={{ $json.contact }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "appointment_followup",
+              "fieldValue": "={{ $json.updated_followups.appointment_followup }}"
+            },
+            {
+              "fieldId": "messages",
+              "fieldValue": "={{ $json.updated_followups.messages }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        608,
+        80
+      ],
+      "id": "375aa559-580f-41a1-a554-a0b75ad4fea2",
+      "name": "Update a row1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/858014624062616/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAK6ZBPU9eZAUBPxlZCGJkM2IAAWnIRuqECjApZCJ78uTvEgjE4ZCDZBnMkwRwMI6Go4TfZAEVQhYRSVIvRhqxoxXDdHL1lFawfi7R0IAxrGatgz40YKyxmbHu3SEb0edf2VZBUeC9pPJZBn7TVIcPGr65DO8kAlafItMrjKxvWvxXmB9v1QV02lwXgpDEQDybpvY6wZDZD"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": {{ JSON.stringify(\"91\" + $json.contact) }},\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($json.message) }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        640,
+        -192
+      ],
+      "id": "3605dafc-8703-4508-8b18-2c3af8527fcf",
+      "name": "Reply Back"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Appointment Followup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Appointment Followup": {
+      "main": [
+        [
+          {
+            "node": "Update a row1",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Reply Back",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a row1": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {
+    "Get many rows": [
+      {
+        "id": "2f77bb1e-4b50-4d1a-9c87-34f939a30b6d",
+        "patient_name": "vansh",
+        "patient_contact": "9429088601",
+        "patient_email": "vansh@gmail.com",
+        "emergency_name": "vansh",
+        "emergency_email": "vansh@gmail.com",
+        "emergency_contact": "3456723456",
+        "medication_details": {},
+        "admission_date": "2025-11-14",
+        "discharge_date": "2025-11-27",
+        "medical_condition": "asdf",
+        "assigned_doctor": "sdv",
+        "age": 23,
+        "gender": "male",
+        "bill_details": [],
+        "reports": [],
+        "doctor_notes": "{}",
+        "doctor_medical_certificate": "",
+        "messages": [
+          {
+            "role": "user",
+            "message": "Hell",
+            "timestamp": "2025-11-14T14:38:30.361Z"
+          },
+          {
+            "role": "user",
+            "message": "Hello",
+            "timestamp": "2025-11-14T15:03:47.904Z"
+          },
+          {
+            "role": "user",
+            "message": "Hello",
+            "timestamp": "2025-11-14T15:06:07.005Z"
+          },
+          {
+            "role": "user",
+            "message": "Hi, Good evening",
+            "timestamp": "2025-11-14T16:14:57.557Z"
+          },
+          {
+            "role": "user",
+            "message": "I am feeling lethargic. What can I do?",
+            "timestamp": "2025-11-14T16:19:23.932Z"
+          },
+          {
+            "role": "ai",
+            "message": "Feeling lethargic after discharge is common. Here are some steps you can take:\n\n1. Rest: Ensure you get enough sleep and avoid strenuous activities.\n2. Hydrate: Drink plenty of water to stay hydrated.\n3. Nutrition: Eat balanced meals rich in fruits, vegetables, and proteins.\n4. Medication: Take any prescribed medicines as directed by your doctor.\n5. Light activity: Gentle walking can help improve energy levels, but avoid overexertion.\n6. Monitor: Keep track of your symptoms. If lethargy worsens, or you experience new symptoms like chest pain, shortness of breath, or confusion, seek medical attention promptly.\n\nIf you continue to feel very tired or weak, please consult your healthcare provider for further evaluation.",
+            "timestamp": "2025-11-14T16:19:27.972Z"
+          }
+        ],
+        "conversation_summary": "",
+        "created_at": "2025-11-14T12:34:47.729327+00:00",
+        "updated_at": "2025-11-14T12:34:47.729327+00:00",
+        "telegram_chat_id": 602769317,
+        "appointment_followup": []
+      },
+      {
+        "id": "26e13590-db1f-4ce0-a3ec-104f0d20cde1",
+        "patient_name": "Dhruv",
+        "patient_contact": "1234567890",
+        "patient_email": "john.doe@example.com",
+        "emergency_name": "Jane Doe",
+        "emergency_email": "jane.doe@example.com",
+        "emergency_contact": "0000000000",
+        "medication_details": {
+          "source": "discharge_summary",
+          "diagnosis": "Severe Upper GI Bleed due to Large Gastric Ulcer, Helicobacter Pylori Gastritis, Acute Blood Loss Anemia",
+          "parsed_at": "2025-11-15T00:05:11.739120",
+          "medications": [
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PREVPAC (Triple Therapy)",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2025-11-29",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PROTONIX (Pantoprazole)",
+              "dosage": "40 mg",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2026-01-10",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "6:00PM",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [],
+              "name": "Tylenol",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [],
+              "end_date": null,
+              "frequency": "as_needed",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "10:00AM",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            }
+          ],
+          "additional_notes": "Patient instructed to STOP all NSAIDs immediately and permanently. Avoid Ibuprofen, Naproxen, and Aspirin.",
+          "discharge_summary_url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763145280/medicare/patients/John_Doe/discharge_summaries/ofhvzvzqqdhzzvkek70t.pdf",
+          "patient_name_from_summary": "Carlos Hernandez",
+          "discharge_date_from_summary": "2025-11-14"
+        },
+        "admission_date": "2024-01-15",
+        "discharge_date": "2024-01-20",
+        "medical_condition": "Fever and cough",
+        "assigned_doctor": "Dr. Smith",
+        "age": 35,
+        "gender": "Male",
+        "bill_details": [
+          "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763145312/medicare/patients/John_Doe/bills/kushqfvkzdpq9vnwkpij.pdf"
+        ],
+        "reports": [
+          "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763145313/medicare/patients/John_Doe/reports/hjehhalergjo2aaqap18.pdf"
+        ],
+        "doctor_notes": "Patient recovered well",
+        "doctor_medical_certificate": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763145313/medicare/patients/John_Doe/certificates/pxmrr44l9joggu5qzybt.pdf",
+        "messages": [],
+        "conversation_summary": "",
+        "created_at": "2025-11-14T18:35:15.744379+00:00",
+        "updated_at": "2025-11-14T18:35:15.744379+00:00",
+        "telegram_chat_id": null,
+        "appointment_followup": []
+      },
+      {
+        "id": "088270c4-d399-42d1-9277-b1af52cbc966",
+        "patient_name": "Remider_Sample_2",
+        "patient_contact": "7043912784",
+        "patient_email": "john.doe@example.com",
+        "emergency_name": "Jane Doe",
+        "emergency_email": "jane.doe@example.com",
+        "emergency_contact": "0987654321",
+        "medication_details": {
+          "source": "discharge_summary",
+          "diagnosis": "Severe Upper GI Bleed due to Large Gastric Ulcer, Helicobacter Pylori Gastritis, Acute Blood Loss Anemia",
+          "parsed_at": "2025-11-15T11:01:09.294636",
+          "medications": [
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PREVPAC (Triple Therapy)",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2025-11-29",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-15T11:40:00Z",
+                  "isreminded": true,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PROTONIX (Pantoprazole)",
+              "dosage": "40 mg",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2026-01-10",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "Tylenol",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [],
+              "end_date": null,
+              "frequency": "as_needed",
+              "reminders": [],
+              "start_date": "2025-11-16"
+            }
+          ],
+          "additional_notes": "Patient instructed to STOP ALL NSAIDs IMMEDIATELY and permanently. Avoid Ibuprofen, Naproxen, and Aspirin. Use Tylenol for pain.",
+          "discharge_summary_url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763184633/medicare/patients/Remider_Sample/discharge_summaries/yn8ivmqv1ykapvcs5dp0.pdf",
+          "patient_name_from_summary": "Carlos Hernandez",
+          "discharge_date_from_summary": "2025-11-14"
+        },
+        "admission_date": "2024-01-15",
+        "discharge_date": "2024-01-20",
+        "medical_condition": "Fever and cough",
+        "assigned_doctor": "Dr. Smith",
+        "age": 35,
+        "gender": "Male",
+        "bill_details": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763186162/medicare/patients/Remider_Sample_2/bills/nob10osiqwiwrxbzbbz7.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$2,180",
+            "details": [
+              {
+                "cost": "$1,200",
+                "name": "EGD Procedure"
+              },
+              {
+                "cost": "$450",
+                "name": "Hemostatic Clips (3)"
+              },
+              {
+                "cost": "$80",
+                "name": "Epinephrine Injection"
+              },
+              {
+                "cost": "$300",
+                "name": "Sedation & Monitoring"
+              },
+              {
+                "cost": "$2,030",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$150",
+                "name": "Hospital Fees"
+              },
+              {
+                "cost": "$0",
+                "name": "Taxes"
+              }
+            ]
+          }
+        ],
+        "reports": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763186172/medicare/patients/Remider_Sample_2/reports/o2xpfsf9itzkgrzbkw7r.pdf",
+            "name": "Comprehensive Blood Panel",
+            "reason": "To assess for anemia and blood loss from the Severe Upper GI Bleed, and to monitor nutritional status (e.g., Vitamin B12) and bone metabolism potentially affected by long-term Proton Pump Inhibitor (PROTONIX, Lansoprazole) therapy.",
+            "biomarkers": [
+              {
+                "name": "Hemoglobin",
+                "range": "( 13.0 - 18.0 ) g/dL",
+                "value": "14.5"
+              },
+              {
+                "name": "Red Blood Cell",
+                "range": "( 4.50 - 6.50 ) x10^12/L",
+                "value": "4.70"
+              },
+              {
+                "name": "Red Cell Distribution Width",
+                "range": "( <14.3 ) %",
+                "value": "13.2"
+              },
+              {
+                "name": "Packed Cell Volume",
+                "range": "( 40 - 54 ) %",
+                "value": "44"
+              },
+              {
+                "name": "Mean Cell Volume",
+                "range": "( 76 - 96 ) fL",
+                "value": "93"
+              },
+              {
+                "name": "Mean Cell Haemoglobin",
+                "range": "( 28 - 34 ) pg",
+                "value": "31"
+              },
+              {
+                "name": "Mean Corpuscular Hb Concentration",
+                "range": "( 30 - 36 ) g/dL",
+                "value": "33"
+              },
+              {
+                "name": "White Blood Cell",
+                "range": "( 4.0 - 11.0 ) x10^9/L",
+                "value": "4.6"
+              },
+              {
+                "name": "Neutrophils (%)",
+                "range": "( 40.0 - 75.0 ) %",
+                "value": "53.6"
+              },
+              {
+                "name": "Lymphocytes (%)",
+                "range": "( 20.0 - 45.0 ) %",
+                "value": "36.2"
+              },
+              {
+                "name": "Monocytes (%)",
+                "range": "( 2.0 - 10.0 ) %",
+                "value": "7.8"
+              },
+              {
+                "name": "Eosinophils (%)",
+                "range": "( 0.0 - 6.0 ) %",
+                "value": "1.5"
+              },
+              {
+                "name": "Basophils (%)",
+                "range": "( 0.0 - 1.0 ) %",
+                "value": "0.9"
+              },
+              {
+                "name": "Neutrophils (Absolute Value)",
+                "range": "( 2.0 - 7.5 ) x10^9/L",
+                "value": "2.5"
+              },
+              {
+                "name": "Lymphocytes (Absolute Value)",
+                "range": "( 1.5 - 4.5 ) x10^9/L",
+                "value": "1.7"
+              },
+              {
+                "name": "Monocytes (Absolute Value)",
+                "range": "( 0.2 - 0.8 ) x10^9/L",
+                "value": "0.4"
+              },
+              {
+                "name": "Eosinophils (Absolute Value)",
+                "range": "( 0.04 - 0.40 ) x10^9/L",
+                "value": "0.07"
+              },
+              {
+                "name": "Basophils (Absolute Value)",
+                "range": "( 0.0 - 0.40 ) x10^9/L",
+                "value": "0.0"
+              },
+              {
+                "name": "Platelet",
+                "range": "( 150 - 400 ) x10^9/L",
+                "value": "173"
+              },
+              {
+                "name": "Haemoglobin A",
+                "range": "( 96.7 - 97.8 ) %",
+                "value": "97.5"
+              },
+              {
+                "name": "Haemoglobin A2",
+                "range": "( 2.2 - 3.2 ) %",
+                "value": "2.5"
+              },
+              {
+                "name": "Haemoglobin F",
+                "range": "( <0.5 ) %",
+                "value": "0.0"
+              },
+              {
+                "name": "Alkaline Phosphatase",
+                "range": "( 38 - 124 ) U/L",
+                "value": "71"
+              },
+              {
+                "name": "Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.32"
+              },
+              {
+                "name": "Albumin",
+                "range": "( 35 - 50 ) g/L",
+                "value": "47"
+              },
+              {
+                "name": "Adjusted Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.22"
+              },
+              {
+                "name": "Phosphate",
+                "range": "( 0.80 - 1.60 ) mmol/L",
+                "value": "1.08"
+              },
+              {
+                "name": "Folate",
+                "range": "( >12.19 ) nmol/L",
+                "value": ">54.36"
+              },
+              {
+                "name": "Ferritin",
+                "range": "( 22.0 - 322.0 ) ug/L",
+                "value": "92.5"
+              },
+              {
+                "name": "B-CrossLaps(B-CTX)",
+                "range": "0.104 - 0.525 ng/ml",
+                "value": "0.121"
+              },
+              {
+                "name": "Vitamin B12",
+                "range": "( 156 - 672 ) pmol/L",
+                "value": "488"
+              }
+            ]
+          }
+        ],
+        "doctor_notes": "Patient recovered well",
+        "doctor_medical_certificate": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763186227/medicare/patients/Remider_Sample_2/certificates/q6pf7ryp0pubp4dakfa6.pdf",
+        "messages": [],
+        "conversation_summary": "",
+        "created_at": "2025-11-15T05:57:08.110547+00:00",
+        "updated_at": "2025-11-15T05:57:08.110547+00:00",
+        "telegram_chat_id": null,
+        "appointment_followup": [
+          {
+            "notes": null,
+            "reason": "GI Clinic follow-up",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-16",
+            "isreminder1sent": true,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "To be scheduled within 1-2 weeks post-discharge.",
+            "reason": "Primary Care follow-up",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-28",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "To be scheduled in 6-8 weeks post-discharge.",
+            "reason": "Repeat EGD",
+            "status": "not_confirmed",
+            "followup_date": "2026-01-02",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          }
+        ]
+      },
+      {
+        "id": "fd370611-6106-4d7e-a794-5f525a6d17b9",
+        "patient_name": "Priyansh",
+        "patient_contact": "7043912784",
+        "patient_email": "priyansh@gmail.com",
+        "emergency_name": "asdf",
+        "emergency_email": "cloudpriyansh@gmail.com",
+        "emergency_contact": "7043912784",
+        "medication_details": {
+          "source": "discharge_summary",
+          "diagnosis": "Severe Upper GI Bleed due to Large Gastric Ulcer, Helicobacter Pylori Gastritis, Acute Blood Loss Anemia",
+          "parsed_at": "2025-11-15T11:01:09.294636",
+          "medications": [
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PREVPAC (Triple Therapy)",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2025-11-29",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-15T11:40:00Z",
+                  "isreminded": true,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PROTONIX (Pantoprazole)",
+              "dosage": "40 mg",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2026-01-10",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "Tylenol",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [],
+              "end_date": null,
+              "frequency": "as_needed",
+              "reminders": [],
+              "start_date": "2025-11-16"
+            }
+          ],
+          "additional_notes": "Patient instructed to STOP ALL NSAIDs IMMEDIATELY and permanently. Avoid Ibuprofen, Naproxen, and Aspirin. Use Tylenol for pain.",
+          "discharge_summary_url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763184633/medicare/patients/Remider_Sample/discharge_summaries/yn8ivmqv1ykapvcs5dp0.pdf",
+          "patient_name_from_summary": "Carlos Hernandez",
+          "discharge_date_from_summary": "2025-11-14"
+        },
+        "admission_date": "2025-11-14",
+        "discharge_date": "2025-11-28",
+        "medical_condition": "Fever and cough",
+        "assigned_doctor": "heheh",
+        "age": 23,
+        "gender": "male",
+        "bill_details": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152010/medicare/patients/Test2/bills/hkpc19glzmtibkbeh0mo.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$2,180",
+            "details": [
+              {
+                "cost": "$1,200",
+                "name": "EGD Procedure"
+              },
+              {
+                "cost": "$450",
+                "name": "Hemostatic Clips (3)"
+              },
+              {
+                "cost": "$80",
+                "name": "Epinephrine Injection"
+              },
+              {
+                "cost": "$300",
+                "name": "Sedation & Monitoring"
+              },
+              {
+                "cost": "$2,030",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$150",
+                "name": "Hospital Fees"
+              },
+              {
+                "cost": "$0",
+                "name": "Taxes"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152023/medicare/patients/Test2/bills/kvbpbow0w3ysi5njjsmi.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$860",
+            "details": [
+              {
+                "cost": "$600",
+                "name": "Floor Room Charges (2 Days)"
+              },
+              {
+                "cost": "$90",
+                "name": "Protonix IV"
+              },
+              {
+                "cost": "$50",
+                "name": "Protonix PO (Transition)"
+              },
+              {
+                "cost": "$40",
+                "name": "Dietary Services (GI Soft Diet)"
+              },
+              {
+                "cost": "$780",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$80",
+                "name": "Hospital Fees"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152034/medicare/patients/Test2/bills/k41bieyyhsotnwtwf53m.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$2,310",
+            "details": [
+              {
+                "cost": "$1,500",
+                "name": "ICU Room & Monitoring (1 Day)"
+              },
+              {
+                "cost": "$120",
+                "name": "Levophed Infusion"
+              },
+              {
+                "cost": "$350",
+                "name": "Blood Transfusion Services"
+              },
+              {
+                "cost": "$140",
+                "name": "Serial Hemoglobin Monitoring"
+              },
+              {
+                "cost": "$2,110",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$200",
+                "name": "Hospital Fees"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152044/medicare/patients/Test2/bills/sfn170lksw5l7ilw4sxc.pdf",
+            "name": "Medical Test Bill",
+            "total": "$145.8",
+            "details": [
+              {
+                "cost": "$45",
+                "name": "Comprehensive Blood Panel"
+              },
+              {
+                "cost": "$70",
+                "name": "Prostate Health Index (PHI)"
+              },
+              {
+                "cost": "$20",
+                "name": "Urine Protein to Creatinine Ratio (UPCR)"
+              },
+              {
+                "cost": "$135",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$0",
+                "name": "Discounts"
+              },
+              {
+                "cost": "$10.8",
+                "name": "Taxes (8%)"
+              }
+            ]
+          }
+        ],
+        "reports": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152063/medicare/patients/Test2/reports/zti0itjn009dojiqpwxx.pdf",
+            "name": "Comprehensive Blood Panel",
+            "reason": "To monitor recovery from acute blood loss anemia and assess iron stores (Ferritin), Vitamin B12, and Folate levels following a severe upper GI bleed.",
+            "biomarkers": [
+              {
+                "name": "Haemoglobin",
+                "range": "( 13.0 - 18.0 ) g/dL",
+                "value": "14.5"
+              },
+              {
+                "name": "Red Blood Cell",
+                "range": "( 4.50 - 6.50 ) x10^12/L",
+                "value": "4.70"
+              },
+              {
+                "name": "Red Cell Distribution Width",
+                "range": "( < 14.3 ) %",
+                "value": "13.2"
+              },
+              {
+                "name": "Packed Cell Volume",
+                "range": "( 40 - 54 ) %",
+                "value": "44"
+              },
+              {
+                "name": "Mean Cell Volume",
+                "range": "( 76 - 96 ) fL",
+                "value": "93"
+              },
+              {
+                "name": "Mean Cell Haemoglobin",
+                "range": "( 28 - 34 ) pg",
+                "value": "31"
+              },
+              {
+                "name": "Mean Corpuscular Hb Concentration",
+                "range": "( 30 - 36 ) g/dL",
+                "value": "33"
+              },
+              {
+                "name": "White Blood Cell",
+                "range": "( 4.0 - 11.0 ) x10^9/L",
+                "value": "4.6"
+              },
+              {
+                "name": "Neutrophils (%)",
+                "range": "( 40.0 - 75.0 ) %",
+                "value": "53.6"
+              },
+              {
+                "name": "Lymphocytes (%)",
+                "range": "( 20.0 - 45.0 ) %",
+                "value": "36.2"
+              },
+              {
+                "name": "Monocytes (%)",
+                "range": "( 2.0 - 10.0 ) %",
+                "value": "7.8"
+              },
+              {
+                "name": "Eosinophils (%)",
+                "range": "( 0.0 - 6.0 ) %",
+                "value": "1.5"
+              },
+              {
+                "name": "Basophils (%)",
+                "range": "( 0.0 - 1.0 ) %",
+                "value": "0.9"
+              },
+              {
+                "name": "Neutrophils (Absolute Value)",
+                "range": "( 2.0 - 7.5 ) x10^9/L",
+                "value": "2.5"
+              },
+              {
+                "name": "Lymphocytes (Absolute Value)",
+                "range": "( 1.5 - 4.5 ) x10^9/L",
+                "value": "1.7"
+              },
+              {
+                "name": "Monocytes (Absolute Value)",
+                "range": "( 0.2 - 0.8 ) x10^9/L",
+                "value": "0.4"
+              },
+              {
+                "name": "Eosinophils (Absolute Value)",
+                "range": "( 0.04 - 0.40 ) x10^9/L",
+                "value": "0.07"
+              },
+              {
+                "name": "Basophils (Absolute Value)",
+                "range": "( 0.0 - 0.1 ) x10^9/L",
+                "value": "0.0"
+              },
+              {
+                "name": "Platelet",
+                "range": "( 150 - 400 ) x10^9/L",
+                "value": "173"
+              },
+              {
+                "name": "Haemoglobin A",
+                "range": "( 96.7 - 97.8 ) %",
+                "value": "97.5"
+              },
+              {
+                "name": "Haemoglobin A2",
+                "range": "( 2.2 - 3.2 ) %",
+                "value": "2.5"
+              },
+              {
+                "name": "Haemoglobin F",
+                "range": "( <0.5 ) %",
+                "value": "0.0"
+              },
+              {
+                "name": "Alkaline Phosphatase",
+                "range": "( 38 - 124 ) U/L",
+                "value": "71"
+              },
+              {
+                "name": "Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.32"
+              },
+              {
+                "name": "Albumin",
+                "range": "( 35 - 50 ) g/L",
+                "value": "42"
+              },
+              {
+                "name": "Adjusted Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.22"
+              },
+              {
+                "name": "Phosphate",
+                "range": "( 0.80 - 1.60 ) mmol/L",
+                "value": "1.08"
+              },
+              {
+                "name": "Folate",
+                "range": "( >12.19 ) nmol/L",
+                "value": ">54.36"
+              },
+              {
+                "name": "Ferritin",
+                "range": "( 22.0 - 322.0 ) ug/L",
+                "value": "92.5"
+              },
+              {
+                "name": "B-CrossLaps(CTX)",
+                "range": "Men (50-70 years) : 0.104 - 0.518 ng/ml",
+                "value": "0.121"
+              },
+              {
+                "name": "Vitamin B12",
+                "range": "( 156 - 672 ) pmol/L",
+                "value": "488"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152110/medicare/patients/Test2/reports/nmsr3bqx5iximfgwyadj.pdf",
+            "name": "Prostate Health Index (PHI)",
+            "reason": "Diagnostic test.",
+            "biomarkers": [
+              {
+                "name": "Total PSA",
+                "range": "[0.00-4.00] ug/L",
+                "value": "0.81 ^1 ug/L"
+              },
+              {
+                "name": "Free PSA",
+                "range": "Not specified",
+                "value": "0.12 ^1 ug/L"
+              },
+              {
+                "name": "p2PSA",
+                "range": "Not specified",
+                "value": "14.35 ^1 ng/L"
+              },
+              {
+                "name": "phi",
+                "range": "Not specified",
+                "value": "106 i1 ^1"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152140/medicare/patients/Test2/reports/flzgzmsobdfm4t9aloyi.pdf",
+            "name": "Urine Protein to Creatinine Ratio (UPCR)",
+            "reason": "To monitor kidney function, which can be affected by medications like PROTONIX (Pantoprazole) or by complications arising from a severe GI bleed, such as acute blood loss anemia.",
+            "biomarkers": [
+              {
+                "name": "Protein, Urine",
+                "range": "<0.12 g/L",
+                "value": "0.09 g/L"
+              },
+              {
+                "name": "Creatinine, Urine",
+                "range": "3536 - 22100 umol/L",
+                "value": "4792 umol/L"
+              },
+              {
+                "name": "Urine Protein to Creatinine Ratio",
+                "range": "<30 mg/mmol",
+                "value": "18.8 mg/mmol"
+              }
+            ]
+          }
+        ],
+        "doctor_notes": "Patient recovered well",
+        "doctor_medical_certificate": "",
+        "messages": [
+          {
+            "role": "user",
+            "message": "Book appointment tomorrow 6pm",
+            "timestamp": "2025-11-15T04:54:12.035Z"
+          },
+          {
+            "role": "user",
+            "message": "Can you please sum up my bills",
+            "timestamp": "2025-11-15T05:03:07.891Z"
+          }
+        ],
+        "conversation_summary": "",
+        "created_at": "2025-11-14T12:08:19.871837+00:00",
+        "updated_at": "2025-11-14T12:08:19.871837+00:00",
+        "telegram_chat_id": null,
+        "appointment_followup": [
+          {
+            "notes": null,
+            "reason": "GI Clinic follow-up",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-16",
+            "isreminder1sent": true,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "To be scheduled within 1-2 weeks post-discharge.",
+            "reason": "Primary Care follow-up",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-28",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "To be scheduled in 6-8 weeks post-discharge.",
+            "reason": "Repeat EGD",
+            "status": "not_confirmed",
+            "followup_date": "2026-01-02",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          }
+        ]
+      },
+      {
+        "id": "19e65941-02b5-4e1a-81fd-762c3db85038",
+        "patient_name": "Remider_Sample_2",
+        "patient_contact": "7043912784",
+        "patient_email": "john.doe@example.com",
+        "emergency_name": "Jane Doe",
+        "emergency_email": "jane.doe@example.com",
+        "emergency_contact": "0987654321",
+        "medication_details": {
+          "source": "discharge_summary",
+          "diagnosis": "Severe Upper GI Bleed due to Large Gastric Ulcer, Helicobacter Pylori Gastritis, Acute Blood Loss Anemia",
+          "parsed_at": "2025-11-15T12:24:50.636865",
+          "medications": [
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PREVPAC (Amoxicillin + Clarithromycin + Lansoprazole)",
+              "dosage": "Triple Therapy Pack",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2025-11-29",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PROTONIX (Pantoprazole)",
+              "dosage": "40 mg",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2026-01-10",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [],
+              "name": "Tylenol",
+              "dosage": "for pain",
+              "status": "active",
+              "timing": [],
+              "end_date": null,
+              "frequency": "as_needed",
+              "reminders": [],
+              "start_date": "2025-11-16"
+            }
+          ],
+          "additional_notes": "Patient is instructed to STOP all NSAIDs immediately and permanently. Avoid Ibuprofen, Naproxen, and Aspirin. Use Tylenol for pain.",
+          "discharge_summary_url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763189656/medicare/patients/Remider_Sample_2/discharge_summaries/elza7rkeedwigntn65y3.pdf",
+          "patient_name_from_summary": null,
+          "discharge_date_from_summary": null
+        },
+        "admission_date": "2024-01-15",
+        "discharge_date": "2024-01-20",
+        "medical_condition": "Fever and cough",
+        "assigned_doctor": "Dr. Smith",
+        "age": 35,
+        "gender": "Male",
+        "bill_details": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763189691/medicare/patients/Remider_Sample_2/bills/brfzh2ao5jbsec5wiqlc.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$2,180",
+            "details": [
+              {
+                "cost": "$1,200",
+                "name": "EGD Procedure"
+              },
+              {
+                "cost": "$450",
+                "name": "Hemostatic Clips (3)"
+              },
+              {
+                "cost": "$80",
+                "name": "Epinephrine Injection"
+              },
+              {
+                "cost": "$300",
+                "name": "Sedation & Monitoring"
+              },
+              {
+                "cost": "$2,030",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$150",
+                "name": "Hospital Fees"
+              },
+              {
+                "cost": "$0",
+                "name": "Taxes"
+              }
+            ]
+          }
+        ],
+        "reports": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763189704/medicare/patients/Remider_Sample_2/reports/v3mgsvylut7jhwvwhzh4.pdf",
+            "name": "Haematology, Biochemistry, and Immunology/Serology Panel",
+            "reason": "To assess the severity of acute blood loss anemia and iron stores following a severe GI bleed, and to monitor for nutrient absorption issues related to PPI medication like Pantoprazole.",
+            "biomarkers": [
+              {
+                "name": "Hemoglobin",
+                "range": "( 13.0 - 18.0 ) g/dL",
+                "value": "14.5"
+              },
+              {
+                "name": "Red Blood Cell",
+                "range": "( 4.50 - 6.50 ) x10^12/L",
+                "value": "4.70"
+              },
+              {
+                "name": "Red Cell Distribution Width",
+                "range": "( < 14.3 ) %",
+                "value": "13.2"
+              },
+              {
+                "name": "Packed Cell Volume",
+                "range": "( 40 - 54 ) %",
+                "value": "44"
+              },
+              {
+                "name": "Mean Cell Volume",
+                "range": "( 76 - 96 ) fL",
+                "value": "93"
+              },
+              {
+                "name": "Mean Cell Haemoglobin",
+                "range": "( 28 - 34 ) pg",
+                "value": "31"
+              },
+              {
+                "name": "Mean Corpuscular Hb Concentration",
+                "range": "( 30 - 36 ) g/dL",
+                "value": "33"
+              },
+              {
+                "name": "White Blood Cell",
+                "range": "( 4.0 - 11.0 ) x10^9/L",
+                "value": "4.6"
+              },
+              {
+                "name": "Neutrophils (%)",
+                "range": "( 40.0 - 75.0 ) %",
+                "value": "53.6"
+              },
+              {
+                "name": "Lymphocytes (%)",
+                "range": "( 20.0 - 45.0 ) %",
+                "value": "36.2"
+              },
+              {
+                "name": "Monocytes (%)",
+                "range": "( 2.0 - 10.0 ) %",
+                "value": "7.8"
+              },
+              {
+                "name": "Eosinophils (%)",
+                "range": "( 0.0 - 6.0 ) %",
+                "value": "1.5"
+              },
+              {
+                "name": "Basophils (%)",
+                "range": "( 0.0 - 1.0 ) %",
+                "value": "0.9"
+              },
+              {
+                "name": "Neutrophils (Absolute Value)",
+                "range": "( 2.0 - 7.5 ) x10^9/L",
+                "value": "2.5"
+              },
+              {
+                "name": "Lymphocytes (Absolute Value)",
+                "range": "( 1.5 - 4.5 ) x10^9/L",
+                "value": "1.7"
+              },
+              {
+                "name": "Monocytes (Absolute Value)",
+                "range": "( 0.2 - 0.8 ) x10^9/L",
+                "value": "0.4"
+              },
+              {
+                "name": "Eosinophils (Absolute Value)",
+                "range": "( 0.04 - 0.40 ) x10^9/L",
+                "value": "0.07"
+              },
+              {
+                "name": "Basophils (Absolute Value)",
+                "range": "- x10^9/L",
+                "value": "0.0"
+              },
+              {
+                "name": "Platelet",
+                "range": "( 150 - 400 ) x10^9/L",
+                "value": "173"
+              },
+              {
+                "name": "Haemoglobin A",
+                "range": "( 96.7 - 97.8 ) %",
+                "value": "97.5"
+              },
+              {
+                "name": "Haemoglobin A2",
+                "range": "( 2.2 - 3.2 ) %",
+                "value": "2.5"
+              },
+              {
+                "name": "Haemoglobin F",
+                "range": "( <0.5 ) %",
+                "value": "0.0"
+              },
+              {
+                "name": "Alkaline Phosphatase",
+                "range": "( 38 - 124 ) U/L",
+                "value": "71"
+              },
+              {
+                "name": "Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.32"
+              },
+              {
+                "name": "Albumin",
+                "range": "( 35 - 50 ) g/L",
+                "value": "47"
+              },
+              {
+                "name": "Adjusted Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.22"
+              },
+              {
+                "name": "Phosphate",
+                "range": "( 0.80 - 1.60 ) mmol/L",
+                "value": "1.08"
+              },
+              {
+                "name": "Folate",
+                "range": "( >12.19 ) nmol/L",
+                "value": ">54.36"
+              },
+              {
+                "name": "Ferritin",
+                "range": "( 22.0 - 322.0 ) ug/L",
+                "value": "92.5"
+              },
+              {
+                "name": "B-CrossLaps(B-CTX)",
+                "range": "0.104 - 0.536 ng/ml",
+                "value": "0.121"
+              },
+              {
+                "name": "Vitamin B12",
+                "range": "( 156 - 672 ) pmol/L",
+                "value": "488"
+              }
+            ]
+          }
+        ],
+        "doctor_notes": "Patient recovered well",
+        "doctor_medical_certificate": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763189746/medicare/patients/Remider_Sample_2/certificates/pusezalqzfi2a6mxda2v.pdf",
+        "messages": [],
+        "conversation_summary": "",
+        "created_at": "2025-11-15T06:55:48.203662+00:00",
+        "updated_at": "2025-11-15T06:55:48.203662+00:00",
+        "telegram_chat_id": null,
+        "appointment_followup": [
+          {
+            "notes": null,
+            "reason": "GI Clinic",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-21",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "Follow-up within 1-2 weeks of discharge.",
+            "reason": "Primary Care",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-28",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "Follow-up in 6-8 weeks.",
+            "reason": "Repeat EGD",
+            "status": "not_confirmed",
+            "followup_date": "2026-01-09",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          }
+        ]
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f53f576ce84faf96af7ca2fa4a524c876d6ba4651f9e0c15dfb49aef0653f7e"
+  }
+}

@@ -1,0 +1,206 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 7
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d67d122b-e4f4-4a3d-91c6-0e5aca26e91e",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "tableId": "patients",
+        "returnAll": true
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        208,
+        0
+      ],
+      "id": "e324d245-c858-4ee0-8e4c-8319f5dabf1b",
+      "name": "Get many rows",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "patient_contact",
+              "condition": "eq",
+              "keyValue": "={{ $json.patient_contact }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "medication_details",
+              "fieldValue": "={{ $json.medication_details }}"
+            },
+            {
+              "fieldId": "messages",
+              "fieldValue": "={{ $json.messages }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        16
+      ],
+      "id": "05a88e14-c1f1-4ae1-a248-fea5a18ae3ec",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/858014624062616/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAK6ZBPU9eZAUBPxlZCGJkM2IAAWnIRuqECjApZCJ78uTvEgjE4ZCDZBnMkwRwMI6Go4TfZAEVQhYRSVIvRhqxoxXDdHL1lFawfi7R0IAxrGatgz40YKyxmbHu3SEb0edf2VZBUeC9pPJZBn7TVIcPGr65DO8kAlafItMrjKxvWvxXmB9v1QV02lwXgpDEQDybpvY6wZDZD"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"messaging_product\": \"whatsapp\",\n  \"to\": {{ JSON.stringify('91'+$json.patientContact) }},\n  \"type\": \"text\",\n  \"text\": {\n    \"body\": {{ JSON.stringify($json.reminderMessage) }}\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        0
+      ],
+      "id": "07b0866f-eb6b-4728-a6b0-80deec08015f",
+      "name": "Reply Back1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Function to get current time in IST ISO format\nfunction getCurrentTimeInIST() {\n    const now = new Date();\n    \n    // Get IST time by adding 5 hours 30 minutes offset\n    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30\n    const istTime = new Date(now.getTime() + istOffset);\n    \n    // Convert to ISO string (will be in UTC format but with IST time values)\n    return istTime.toISOString();\n}\n\n// Set up time window constants in IST ISO format\nconst currentTimeISO = getCurrentTimeInIST();\nconst lookaheadTimeISO = new Date(new Date(currentTimeISO).getTime() + (15 * 60 * 1000)).toISOString();\n\nconsole.log(\"currentTime IST ISO:\", currentTimeISO);\nconsole.log(\"lookaheadTime IST ISO:\", lookaheadTimeISO);\n\n// Use a Map to group reminders by patientContact\nconst patientRemindersMap = new Map();\nconst data = $(\"Get many rows\").all(); \n\nfor (const patient of data) { \n    console.log(\"1111\");\n    console.log(\"Before If\")\n    console.log(patient)\n    \n    if (patient.json.medication_details && Array.isArray(patient.json.medication_details.medications)) {\n        console.log(\"In medications details\")\n        const medicationsArray = patient.json.medication_details.medications;\n        const patientContact = patient.json.patient_contact;\n        \n        if (!patientRemindersMap.has(patientContact)) {\n            patientRemindersMap.set(patientContact, {\n                patientContact: patientContact,\n                reminders: [],\n            });\n        }\n        \n        console.log(\"before assigning patientData\", patientRemindersMap)\n        const patientData = patientRemindersMap.get(patientContact);\n        console.log(\"after assigning patientData\", patientRemindersMap)\n        \n        for (let medIndex = 0; medIndex < medicationsArray.length; medIndex++) {\n            const medicine = medicationsArray[medIndex];\n            console.log(\"medindex\", medIndex)\n            \n            if (medicine.reminders && Array.isArray(medicine.reminders)) {\n                console.log(\"in medicine array\")\n                let reminderFoundForThisMedicine = false; \n                \n                for (let remIndex = 0; remIndex < medicine.reminders.length; remIndex++) {\n                    const reminder = medicine.reminders[remIndex];\n                    \n                    if (reminder.isreminded === false) {\n                        console.log(\"in reminder false\")\n                        \n                        // reminder.time is in IST ISO format from DB\n                        const reminderTimeISO = reminder.time;\n                        \n                        console.log(\"reminderTimeISO:\", reminderTimeISO);\n                        console.log(\"currentTimeISO:\", currentTimeISO);\n                        console.log(\"lookaheadTimeISO:\", lookaheadTimeISO);\n                        \n                        // Direct string comparison\n                        if (reminderTimeISO > currentTimeISO && reminderTimeISO <= lookaheadTimeISO) {\n                            console.log(\"*****\");\n                            patientData.reminders.push([\n                                medicine.name,\n                                reminder.time,\n                                reminder.date \n                            ]);\n                            console.log(\"patientData after push\", patientData)\n                            \n                            reminderFoundForThisMedicine = true;\n                            break; \n                        }\n                    }\n                }\n                \n                if (reminderFoundForThisMedicine) {\n                    continue; \n                }\n            }\n        }\n    }\n}\n\nconst urgentReminders = Array.from(patientRemindersMap.values())\n    .filter(patient => patient.reminders.length > 0)\n    .map(patient => {\n        const medicineNames = patient.reminders.map(r => r[0]);\n        console.log(\"medicineNames\", medicineNames)\n        const medicineList = medicineNames.join(', ');\n        \n        const messageText = `This is the reminder for your medicines. Please take the following medicine(s):\\n${medicineList}\\nHave a happy recovery.`;\n        \n        return {\n            ...patient,\n            reminderMessage: messageText\n        };\n    });\n\nconst result = urgentReminders;\nconsole.log(\"result\", result)\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        432,
+        0
+      ],
+      "id": "d26a4b2b-9895-4d19-ae8b-80ebcf290aa5",
+      "name": "Find Urgent Reminders"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the original, unmodified patient data (input to this node)\nconst patientsToUpdate = $('Get many rows').all(); \n\n// Get the update instructions from the output of the previous node.\nconst updateInstructions = $('Find Urgent Reminders').all();\n\n// Use a Map for quick lookup of the original patient object by their patientContact\nconst patientMap = new Map();\npatientsToUpdate.forEach(p => {\n    const patient = p; \n    patientMap.set(patient.json.patient_contact, patient);\n});\n\n// Track which patients were actually updated\nconst updatedPatients = [];\n\n// --- Apply Updates Based on Instructions ---\nfor (const instructionSet of updateInstructions) {\n    \n    // 1. Get identifiers from the instruction set\n    const contact = instructionSet.json.patientContact;\n    const remindersToUpdate = instructionSet.json.reminders; // Array of [name, time, date] for each medicine\n    const reminderMessage = instructionSet.json.reminderMessage; // Get the message from Find Urgent Reminders\n    \n    // 2. Find the corresponding original patient object\n    const originalPatient = patientMap.get(contact);\n    \n    if (originalPatient) {\n        \n        // Check both possible field names\n        const medicationsArray = originalPatient.json.medication_details.medications;\n        \n        console.log(\"Found patient:\", contact);\n        console.log(\"Medications array length:\", medicationsArray?.length);\n        console.log(\"Reminders to update count:\", remindersToUpdate.length);\n        \n        if (!medicationsArray) {\n            console.log(\"ERROR: No medications array found for patient:\", contact);\n            continue;\n        }\n        \n        let patientWasUpdated = false;\n        let updateCount = 0;\n        \n        // --- Loop through EVERY medicine that needs a reminder update ---\n        for (const reminderDetails of remindersToUpdate) {\n            \n            // Extract the target details: [name, time, date]\n            const targetMedicineName = reminderDetails[0]; \n            const targetTimeISO = reminderDetails[1]; // ISO format\n            const targetDate = reminderDetails[2];\n            \n            console.log(\"=== Processing medicine reminder ===\");\n            console.log(\"Medicine name:\", targetMedicineName);\n            console.log(\"Target time ISO:\", targetTimeISO);\n            console.log(\"Target date:\", targetDate);\n            \n            let foundThisReminder = false;\n            \n            // Search through the patient's medicines to find this specific medicine\n            for (const medicine of medicationsArray) {\n                \n                // Check if the medicine name matches\n                if (medicine.name === targetMedicineName) {\n                    \n                    console.log(\"✓ Found matching medicine:\", medicine.name);\n                    \n                    // Found the medicine, now loop through its reminders\n                    if (medicine.reminders && Array.isArray(medicine.reminders)) {\n                        \n                        console.log(\"Reminders count:\", medicine.reminders.length);\n                        \n                        // Search through this medicine's reminders\n                        for (const reminder of medicine.reminders) {\n                            \n                            console.log(\"  Checking - time:\", reminder.time, \"| date:\", reminder.date, \"| isreminded:\", reminder.isreminded);\n                            \n                            // Match based on ISO time and date\n                            if (reminder.time === targetTimeISO && \n                                reminder.date === targetDate && \n                                reminder.isreminded === false) {\n                                \n                                console.log(\"✓✓✓ MATCH FOUND! Updating isreminded to true\");\n                                \n                                // Set the flag to TRUE\n                                reminder.isreminded = true;\n                                patientWasUpdated = true;\n                                foundThisReminder = true;\n                                updateCount++;\n                                \n                                // BREAK: Found and updated the reminder for THIS medicine\n                                // Now exit the reminder loop to stop searching this medicine's other reminders\n                                break; \n                            }\n                        }\n                    } else {\n                        console.log(\"ERROR: No reminders array found for medicine:\", medicine.name);\n                    }\n                    \n                    // BREAK: Found the medicine (whether we updated a reminder or not)\n                    // Exit the medicine search loop\n                    break;\n                }\n            }\n            \n            if (!foundThisReminder) {\n                console.log(\"⚠ WARNING: Could not find/update reminder for medicine:\", targetMedicineName);\n            }\n            \n            // CONTINUE: Automatically moves to the NEXT medicine in remindersToUpdate\n            // The for loop continues to process the next reminderDetails\n        }\n        \n        console.log(\"Total reminders updated for patient\", contact, \":\", updateCount);\n        \n        // If this patient had any updates, add them to the result array\n        if (patientWasUpdated) {\n            // Append the reminder message to the patient's messages array\n            if (!originalPatient.json.messages) {\n                originalPatient.json.messages = [];\n            }\n            originalPatient.json.messages.push(reminderMessage);\n            \n            updatedPatients.push(originalPatient);\n        }\n    } else {\n        console.log(\"ERROR: Patient not found in map:\", contact);\n    }\n}\n\nconsole.log(\"=== Update complete ===\");\nconsole.log(\"Total patients updated:\", updatedPatients.length);\n\n// Return only the patients that were updated\nreturn updatedPatients;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        16
+      ],
+      "id": "b49dcc80-9497-49c3-a712-eb93c196bf31",
+      "name": "Code in JavaScript"
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get many rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many rows": {
+      "main": [
+        [
+          {
+            "node": "Find Urgent Reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a row": {
+      "main": [
+        []
+      ]
+    },
+    "Reply Back1": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Urgent Reminders": {
+      "main": [
+        [
+          {
+            "node": "Reply Back1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f53f576ce84faf96af7ca2fa4a524c876d6ba4651f9e0c15dfb49aef0653f7e"
+  }
+}
