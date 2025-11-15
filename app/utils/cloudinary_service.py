@@ -1,6 +1,7 @@
 """Cloudinary service for uploading files."""
 
 import logging
+import os
 import cloudinary.uploader
 from fastapi import UploadFile, HTTPException, status
 from typing import Optional
@@ -51,12 +52,27 @@ async def upload_pdf_to_cloudinary(
             file_content,
             folder=folder,
             resource_type=resource_type,
-            format="pdf"
+            format="pdf",
+            type="upload",  # Explicitly set upload type
+            invalidate=True,  # Invalidate CDN cache
+            use_filename=True,  # Use original filename
+            unique_filename=True,  # Add unique suffix to avoid conflicts
         )
         
-        # Return secure URL
-        secure_url = upload_result.get("secure_url", upload_result.get("url"))
+        # Log full upload result for debugging
+        logger.debug(f"Upload result: {upload_result}")
+        
+        # Return secure URL - for raw files, use secure_url or url
+        secure_url = upload_result.get("secure_url") or upload_result.get("url")
+        if not secure_url:
+            # Fallback: construct URL manually if not in response
+            public_id = upload_result.get("public_id", "")
+            cloud_name = upload_result.get("cloud_name") or os.getenv("CLOUDINARY_CLOUD_NAME")
+            secure_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{public_id}.pdf"
+        
         logger.info(f"File uploaded successfully: {secure_url}")
+        logger.info(f"Public ID: {upload_result.get('public_id')}")
+        logger.info(f"Resource type: {upload_result.get('resource_type')}")
         return secure_url
         
     except HTTPException:

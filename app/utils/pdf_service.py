@@ -106,10 +106,28 @@ async def process_pdf_discharge_summary(pdf_file: UploadFile, patient_name: str)
             pdf_bytes,
             folder=folder,
             resource_type="raw",
-            format="pdf"
+            format="pdf",
+            type="upload",  # Explicitly set upload type
+            invalidate=True,  # Invalidate CDN cache
+            use_filename=True,  # Use original filename
+            unique_filename=True,  # Add unique suffix to avoid conflicts
         )
-        pdf_url = upload_result.get("secure_url", upload_result.get("url"))
+        
+        # Log full upload result for debugging
+        logger.debug(f"Upload result: {upload_result}")
+        
+        # Get secure URL - for raw files, use secure_url or url
+        pdf_url = upload_result.get("secure_url") or upload_result.get("url")
+        if not pdf_url:
+            # Fallback: construct URL manually if not in response
+            import os
+            public_id = upload_result.get("public_id", "")
+            cloud_name = upload_result.get("cloud_name") or os.getenv("CLOUDINARY_CLOUD_NAME")
+            pdf_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{public_id}.pdf"
+        
         logger.info(f"PDF uploaded: {pdf_url}")
+        logger.info(f"Public ID: {upload_result.get('public_id')}")
+        logger.info(f"Resource type: {upload_result.get('resource_type')}")
         
         # Convert PDF bytes to images (using the bytes we already read)
         logger.info("Converting PDF to images...")
@@ -154,10 +172,28 @@ async def process_pdf_report(pdf_file: UploadFile, patient_name: str) -> Tuple[s
             pdf_bytes,
             folder=folder,
             resource_type="raw",
-            format="pdf"
+            format="pdf",
+            type="upload",  # Explicitly set upload type
+            invalidate=True,  # Invalidate CDN cache
+            use_filename=True,  # Use original filename
+            unique_filename=True,  # Add unique suffix to avoid conflicts
         )
-        pdf_url = upload_result.get("secure_url", upload_result.get("url"))
+        
+        # Log full upload result for debugging
+        logger.debug(f"Upload result: {upload_result}")
+        
+        # Get secure URL - for raw files, use secure_url or url
+        pdf_url = upload_result.get("secure_url") or upload_result.get("url")
+        if not pdf_url:
+            # Fallback: construct URL manually if not in response
+            import os
+            public_id = upload_result.get("public_id", "")
+            cloud_name = upload_result.get("cloud_name") or os.getenv("CLOUDINARY_CLOUD_NAME")
+            pdf_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{public_id}.pdf"
+        
         logger.info(f"PDF uploaded: {pdf_url}")
+        logger.info(f"Public ID: {upload_result.get('public_id')}")
+        logger.info(f"Resource type: {upload_result.get('resource_type')}")
         
         # Convert PDF bytes to images (using the bytes we already read)
         logger.info("Converting PDF to images...")
@@ -202,10 +238,28 @@ async def process_pdf_bill(pdf_file: UploadFile, patient_name: str) -> Tuple[str
             pdf_bytes,
             folder=folder,
             resource_type="raw",
-            format="pdf"
+            format="pdf",
+            type="upload",  # Explicitly set upload type
+            invalidate=True,  # Invalidate CDN cache
+            use_filename=True,  # Use original filename
+            unique_filename=True,  # Add unique suffix to avoid conflicts
         )
-        pdf_url = upload_result.get("secure_url", upload_result.get("url"))
+        
+        # Log full upload result for debugging
+        logger.debug(f"Upload result: {upload_result}")
+        
+        # Get secure URL - for raw files, use secure_url or url
+        pdf_url = upload_result.get("secure_url") or upload_result.get("url")
+        if not pdf_url:
+            # Fallback: construct URL manually if not in response
+            import os
+            public_id = upload_result.get("public_id", "")
+            cloud_name = upload_result.get("cloud_name") or os.getenv("CLOUDINARY_CLOUD_NAME")
+            pdf_url = f"https://res.cloudinary.com/{cloud_name}/raw/upload/{public_id}.pdf"
+        
         logger.info(f"PDF uploaded: {pdf_url}")
+        logger.info(f"Public ID: {upload_result.get('public_id')}")
+        logger.info(f"Resource type: {upload_result.get('resource_type')}")
         
         # Convert PDF bytes to images (using the bytes we already read)
         logger.info("Converting PDF to images...")
