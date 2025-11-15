@@ -14,10 +14,20 @@ def serialize_dates_for_mongodb(data: dict) -> dict:
         if isinstance(value, (date, datetime)):
             data[key] = value.isoformat()
         elif isinstance(value, list):
-            data[key] = [
-                item.isoformat() if isinstance(item, (date, datetime)) else item
-                for item in value
-            ]
+            serialized_list = []
+            for item in value:
+                if isinstance(item, (date, datetime)):
+                    serialized_list.append(item.isoformat())
+                elif isinstance(item, dict):
+                    # Handle nested dictionaries (e.g., Followup objects)
+                    serialized_item = serialize_dates_for_mongodb(item.copy())
+                    serialized_list.append(serialized_item)
+                else:
+                    serialized_list.append(item)
+            data[key] = serialized_list
+        elif isinstance(value, dict):
+            # Recursively handle nested dictionaries
+            data[key] = serialize_dates_for_mongodb(value)
     return data
 
 async def create_patient(patient: PatientCreate) -> PatientResponse:
@@ -38,7 +48,7 @@ async def create_patient(patient: PatientCreate) -> PatientResponse:
             "doctor_medical_certificate": "",
             "messages": [],
             "conversation_summary": "",
-            "appointment_followup": "",
+            "appointment_followup": [],
             "telegram_chat_id": None,
         }
         

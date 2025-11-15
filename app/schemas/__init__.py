@@ -1,5 +1,5 @@
 """This file contains the schemas for the application."""
-from app.schemas.patients import PatientCreate, PatientResponse
+from app.schemas.patients import PatientCreate, PatientResponse, Followup, FollowupStatus
 from app.schemas.medications import (
     MedicationDetail,
     DischargeSummaryParsed,
@@ -22,6 +22,8 @@ __all__ = [
     "DayEnum",
     "FrequencyEnum",
     "MedicationStatus",
+    "Followup",
+    "FollowupStatus",
     "Biomarker",
     "ReportParsed",
     "BillDetail",

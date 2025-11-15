@@ -3,6 +3,20 @@
 from datetime import date, datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, EmailStr
+from enum import Enum
+
+class FollowupStatus(str, Enum):
+    """Followup status for appointments."""
+    CONFIRMED = "confirmed"
+    NOT_CONFIRMED = "not_confirmed"
+
+class Followup(BaseModel):
+    """Followup tracking for appointments."""
+    
+    followup_date: date = Field(..., description="Followup date in ISO format")
+    isreminder1sent: bool = Field(default=False, description="Whether first reminder has been sent")
+    isreminder2sent: bool = Field(default=False, description="Whether second reminder has been sent")
+    status: FollowupStatus = Field(default=FollowupStatus.NOT_CONFIRMED, description="Followup status: confirmed or not_confirmed")
 
 class PatientBase(BaseModel):
     """Base patient schema with common fields."""
@@ -26,7 +40,7 @@ class PatientBase(BaseModel):
     doctor_medical_certificate: str = Field(default="", description="Doctor's medical certificate file path or URL")
     messages: List[Dict[str, Any]] = Field(default_factory=list, description="Array of conversation messages as JSONB")
     conversation_summary: str = Field(default="", description="Summary of the conversation")
-    appointment_followup: str = Field(default="", description="Appointment follow-up information")
+    appointment_followup: List[Followup] = Field(default_factory=list, description="List of appointment followups")
     telegram_chat_id: Optional[float] = Field(None, description="Telegram chat ID")
     
     @field_validator("patient_contact", "emergency_contact")
@@ -64,7 +78,7 @@ class PatientUpdate(BaseModel):
     doctor_medical_certificate: Optional[str] = Field(None, description="Doctor's medical certificate file path or URL")
     messages: Optional[List[Dict[str, Any]]] = Field(None, description="Array of conversation messages as JSONB")
     conversation_summary: Optional[str] = Field(None, description="Summary of the conversation")
-    appointment_followup: Optional[str] = Field(None, description="Appointment follow-up information")
+    appointment_followup: Optional[List[Followup]] = Field(None, description="List of appointment followups")
     telegram_chat_id: Optional[float] = Field(None, description="Telegram chat ID")
 
     @field_validator("patient_contact", "emergency_contact")

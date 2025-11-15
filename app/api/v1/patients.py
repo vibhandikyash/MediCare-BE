@@ -101,6 +101,7 @@ async def create_patient_endpoint(
         
         # Process discharge summary PDF if provided
         medication_details_dict = {}
+        parsed_data = None
         
         if discharge_summary_pdf:
             try:
@@ -345,6 +346,12 @@ async def create_patient_endpoint(
             )
             logger.info(f"Medical certificate uploaded successfully: {medical_certificate_url}")
         
+        # Extract appointment followups from parsed discharge summary if available
+        appointment_followups = []
+        if parsed_data:
+            appointment_followups = parsed_data.appointment_followup
+            logger.info(f"Extracted {len(appointment_followups)} appointment followups from discharge summary")
+        
         # Create patient data
         logger.info("Creating PatientCreate object with medication_details")
         logger.debug(f"medication_details contains {len(medication_details_dict.get('medications', []))} medications")
@@ -367,6 +374,7 @@ async def create_patient_endpoint(
             reports=reports_list,
             doctor_notes=doctor_notes,
             doctor_medical_certificate=medical_certificate_url,
+            appointment_followup=appointment_followups,
             telegram_chat_id=telegram_chat_id,
         )
         

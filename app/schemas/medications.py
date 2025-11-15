@@ -5,6 +5,7 @@ from datetime import date
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from enum import Enum
+from app.schemas.patients import Followup
 
 
 class TimingEnum(str, Enum):
@@ -74,6 +75,7 @@ class DischargeSummaryParsed(BaseModel):
     discharge_date: Optional[date] = Field(None, description="Discharge date from summary")
     diagnosis: Optional[str] = Field(None, description="Diagnosis from discharge summary")
     additional_notes: Optional[str] = Field(None, description="Any additional relevant notes")
+    appointment_followup: List[Followup] = Field(default_factory=list, description="List of appointment followups")
 
 
 class DischargeSummaryUploadResponse(BaseModel):

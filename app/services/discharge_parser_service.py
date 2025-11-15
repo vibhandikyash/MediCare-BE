@@ -17,6 +17,7 @@ from app.schemas.medications import (
     MedicationStatus,
     Reminder,
 )
+from app.schemas.patients import Followup, FollowupStatus
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -156,6 +157,12 @@ Also extract:
 - **discharge_date**: Date of discharge (format: YYYY-MM-DD)
 - **diagnosis**: Primary diagnosis or condition
 - **additional_notes**: Any other relevant information, including warnings about medications to avoid
+- **appointment_followup**: Array of appointment followup dates. Extract any mentioned follow-up appointments, check-ups, or review dates.
+  For each followup appointment, extract:
+  - **followup_date**: Date of the followup appointment (format: YYYY-MM-DD)
+  - **isreminder1sent**: Always set to false (default)
+  - **isreminder2sent**: Always set to false (default)
+  - **status**: Always set to "not_confirmed" (default)
 
 IMPORTANT: Return ONLY a valid JSON object with this exact structure:
 {{
@@ -174,7 +181,15 @@ IMPORTANT: Return ONLY a valid JSON object with this exact structure:
     "patient_name": "string or null",
     "discharge_date": "YYYY-MM-DD or null",
     "diagnosis": "string or null",
-    "additional_notes": "string or null"
+    "additional_notes": "string or null",
+    "appointment_followup": [
+        {{
+            "followup_date": "YYYY-MM-DD",
+            "isreminder1sent": false,
+            "isreminder2sent": false,
+            "status": "not_confirmed"
+        }}
+    ]
 }}
 
 Do not include any explanations, markdown formatting, or additional text. Return ONLY the JSON object.
@@ -402,6 +417,41 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
                 except (ValueError, TypeError):
                     logger.warning(f"Invalid discharge_date format: {parsed_json.get('discharge_date')}")
             
+            # Process appointment followups
+            appointment_followups = []
+            followup_data_list = parsed_json.get("appointment_followup", [])
+            for followup_data in followup_data_list:
+                try:
+                    followup_date = None
+                    if followup_data.get("followup_date"):
+                        try:
+                            followup_date = datetime.strptime(followup_data["followup_date"], "%Y-%m-%d").date()
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid followup_date format: {followup_data.get('followup_date')}")
+                            continue
+                    
+                    if followup_date is None:
+                        continue
+                    
+                    # Parse status
+                    status_val = FollowupStatus.NOT_CONFIRMED
+                    if followup_data.get("status"):
+                        try:
+                            status_val = FollowupStatus(followup_data["status"].lower())
+                        except ValueError:
+                            pass
+                    
+                    followup = Followup(
+                        followup_date=followup_date,
+                        isreminder1sent=followup_data.get("isreminder1sent", False),
+                        isreminder2sent=followup_data.get("isreminder2sent", False),
+                        status=status_val,
+                    )
+                    appointment_followups.append(followup)
+                except Exception as e:
+                    logger.warning(f"Error parsing followup: {str(e)}")
+                    continue
+            
             # Create final parsed result
             result = DischargeSummaryParsed(
                 medications=medications,
@@ -409,9 +459,10 @@ async def parse_discharge_summary_with_vision(image_bytes_list: list[bytes], mod
                 discharge_date=discharge_date,
                 diagnosis=parsed_json.get("diagnosis"),
                 additional_notes=parsed_json.get("additional_notes"),
+                appointment_followup=appointment_followups,
             )
             
-            logger.info(f"Successfully parsed discharge summary with {len(result.medications)} medications")
+            logger.info(f"Successfully parsed discharge summary with {len(result.medications)} medications and {len(result.appointment_followup)} appointment followups")
             return result
             
         except Exception as e:
