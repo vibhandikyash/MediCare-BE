@@ -126,3 +126,99 @@ async def process_pdf_discharge_summary(pdf_file: UploadFile, patient_name: str)
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process discharge summary: {str(e)}"
         )
+
+
+async def process_pdf_report(pdf_file: UploadFile, patient_name: str) -> Tuple[str, List[bytes]]:
+    """
+    Complete workflow: Read PDF bytes, upload to Cloudinary, convert to images (for AI processing only).
+    Similar to process_pdf_discharge_summary but for medical reports.
+    """
+    try:
+        import cloudinary.uploader
+        
+        # Read PDF bytes first (before any operations consume the stream)
+        logger.info(f"Processing report PDF for patient: {patient_name}")
+        logger.info(f"Reading PDF file: {pdf_file.filename}")
+        pdf_bytes = await pdf_file.read()
+        logger.info(f"PDF file read: {len(pdf_bytes)} bytes")
+        
+        # Reset file pointer for potential reuse
+        await pdf_file.seek(0)
+        
+        # Upload PDF bytes to Cloudinary
+        folder_name = patient_name.replace(' ', '_')
+        folder = f"medicare/patients/{folder_name}/reports"
+        
+        logger.info(f"Uploading PDF to Cloudinary folder: {folder}")
+        upload_result = cloudinary.uploader.upload(
+            pdf_bytes,
+            folder=folder,
+            resource_type="raw",
+            format="pdf"
+        )
+        pdf_url = upload_result.get("secure_url", upload_result.get("url"))
+        logger.info(f"PDF uploaded: {pdf_url}")
+        
+        # Convert PDF bytes to images (using the bytes we already read)
+        logger.info("Converting PDF to images...")
+        image_bytes_list = await convert_pdf_bytes_to_images(pdf_bytes)
+        
+        logger.info(f"Report processing complete: PDF uploaded, {len(image_bytes_list)} image(s) ready for AI processing")
+        return pdf_url, image_bytes_list
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing PDF report: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process report: {str(e)}"
+        )
+
+
+async def process_pdf_bill(pdf_file: UploadFile, patient_name: str) -> Tuple[str, List[bytes]]:
+    """
+    Complete workflow: Read PDF bytes, upload to Cloudinary, convert to images (for AI processing only).
+    Similar to process_pdf_report but for medical bills.
+    """
+    try:
+        import cloudinary.uploader
+        
+        # Read PDF bytes first (before any operations consume the stream)
+        logger.info(f"Processing bill PDF for patient: {patient_name}")
+        logger.info(f"Reading PDF file: {pdf_file.filename}")
+        pdf_bytes = await pdf_file.read()
+        logger.info(f"PDF file read: {len(pdf_bytes)} bytes")
+        
+        # Reset file pointer for potential reuse
+        await pdf_file.seek(0)
+        
+        # Upload PDF bytes to Cloudinary
+        folder_name = patient_name.replace(' ', '_')
+        folder = f"medicare/patients/{folder_name}/bills"
+        
+        logger.info(f"Uploading PDF to Cloudinary folder: {folder}")
+        upload_result = cloudinary.uploader.upload(
+            pdf_bytes,
+            folder=folder,
+            resource_type="raw",
+            format="pdf"
+        )
+        pdf_url = upload_result.get("secure_url", upload_result.get("url"))
+        logger.info(f"PDF uploaded: {pdf_url}")
+        
+        # Convert PDF bytes to images (using the bytes we already read)
+        logger.info("Converting PDF to images...")
+        image_bytes_list = await convert_pdf_bytes_to_images(pdf_bytes)
+        
+        logger.info(f"Bill processing complete: PDF uploaded, {len(image_bytes_list)} image(s) ready for AI processing")
+        return pdf_url, image_bytes_list
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error processing PDF bill: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process bill: {str(e)}"
+        )

@@ -9,6 +9,8 @@ from app.schemas.medications import (
     FrequencyEnum,
     MedicationStatus,
 )
+from app.schemas.reports import Biomarker, ReportParsed
+from app.schemas.bills import BillDetail, BillParsed
 
 __all__ = [
     "PatientCreate",
@@ -20,4 +22,8 @@ __all__ = [
     "DayEnum",
     "FrequencyEnum",
     "MedicationStatus",
+    "Biomarker",
+    "ReportParsed",
+    "BillDetail",
+    "BillParsed",
 ]

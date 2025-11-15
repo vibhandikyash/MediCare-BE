@@ -8,8 +8,10 @@ from fastapi import APIRouter, status, Form, File, UploadFile, HTTPException
 from app.schemas.patients import PatientCreate, PatientResponse
 from app.services.patient_service import create_patient, get_all_patients
 from app.utils.cloudinary_service import upload_pdf_to_cloudinary, upload_multiple_pdfs_to_cloudinary
-from app.utils.pdf_service import process_pdf_discharge_summary
+from app.utils.pdf_service import process_pdf_discharge_summary, process_pdf_report, process_pdf_bill
 from app.services.discharge_parser_service import parse_discharge_summary_with_vision
+from app.services.report_parser_service import parse_report_with_vision
+from app.services.bill_parser_service import parse_bill_with_vision
 from pydantic import EmailStr
 
 logger = logging.getLogger(__name__)
@@ -200,25 +202,138 @@ async def create_patient_endpoint(
             logger.info("No medication details provided - using empty dict")
             medication_details_dict = {}
         
-        # Upload bill details PDFs
-        bill_urls = []
+        # Process bill details PDFs - parse each bill
+        bills_list = []
         if bill_details:
-            logger.info(f"Uploading {len(bill_details)} bill detail PDF(s)")
-            bill_urls = await upload_multiple_pdfs_to_cloudinary(
-                bill_details,
-                folder=f"medicare/patients/{patient_name.replace(' ', '_')}/bills"
-            )
-            logger.info(f"Bill details uploaded successfully: {len(bill_urls)} file(s)")
+            logger.info(f"=== BILL PROCESSING STARTED ===")
+            logger.info(f"Processing {len(bill_details)} bill PDF(s)")
+            
+            for idx, bill_file in enumerate(bill_details):
+                try:
+                    logger.info(f"Processing bill {idx + 1}/{len(bill_details)}: {bill_file.filename}")
+                    
+                    # Validate file type
+                    if not bill_file.filename or not bill_file.filename.lower().endswith('.pdf'):
+                        logger.warning(f"Skipping non-PDF file: {bill_file.filename}")
+                        continue
+                    
+                    # Step 1: Process PDF: upload PDF, convert to images (for AI processing)
+                    logger.info(f"Step 1: Uploading bill PDF and converting to images...")
+                    bill_url, image_bytes_list = await process_pdf_bill(
+                        bill_file,
+                        patient_name
+                    )
+                    
+                    logger.info(f"✓ Bill PDF uploaded to: {bill_url}")
+                    logger.info(f"✓ Converted PDF to {len(image_bytes_list)} image(s) for AI processing")
+                    
+                    # Step 2: Parse bill with AI vision model
+                    logger.info(f"Step 2: Parsing bill with AI vision model...")
+                    parsed_bill = await parse_bill_with_vision(
+                        image_bytes_list=image_bytes_list
+                    )
+                    
+                    logger.info(f"✓ Parsed bill: {parsed_bill.name} with {len(parsed_bill.details)} items, total: {parsed_bill.total}")
+                    
+                    # Step 3: Structure bill data
+                    logger.info(f"Step 3: Structuring bill data...")
+                    details_list = []
+                    for detail in parsed_bill.details:
+                        details_list.append({
+                            "name": detail.name,
+                            "cost": detail.cost
+                        })
+                    
+                    bill_dict = {
+                        "url": bill_url,
+                        "name": parsed_bill.name,
+                        "details": details_list,
+                        "total": parsed_bill.total
+                    }
+                    bills_list.append(bill_dict)
+                    logger.info(f"✓ Successfully structured bill: {parsed_bill.name}")
+                    
+                except HTTPException:
+                    logger.error(f"HTTPException during bill {idx + 1} processing", exc_info=True)
+                    # Continue with other bills even if one fails
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing bill {idx + 1} ({bill_file.filename}): {str(e)}", exc_info=True)
+                    # Continue with other bills even if one fails
+                    continue
+            
+            logger.info(f"=== BILL PROCESSING COMPLETED ===")
+            logger.info(f"Successfully processed {len(bills_list)} out of {len(bill_details)} bill(s)")
         
-        # Upload reports PDFs
-        report_urls = []
+        # Process reports PDFs - parse each report
+        reports_list = []
         if reports:
-            logger.info(f"Uploading {len(reports)} report PDF(s)")
-            report_urls = await upload_multiple_pdfs_to_cloudinary(
-                reports,
-                folder=f"medicare/patients/{patient_name.replace(' ', '_')}/reports"
-            )
-            logger.info(f"Reports uploaded successfully: {len(report_urls)} file(s)")
+            logger.info(f"=== REPORT PROCESSING STARTED ===")
+            logger.info(f"Processing {len(reports)} report PDF(s)")
+            
+            # Get medications and diagnosis for context
+            medications_list = medication_details_dict.get("medications", [])
+            diagnosis = medication_details_dict.get("diagnosis")
+            
+            for idx, report_file in enumerate(reports):
+                try:
+                    logger.info(f"Processing report {idx + 1}/{len(reports)}: {report_file.filename}")
+                    
+                    # Validate file type
+                    if not report_file.filename or not report_file.filename.lower().endswith('.pdf'):
+                        logger.warning(f"Skipping non-PDF file: {report_file.filename}")
+                        continue
+                    
+                    # Step 1: Process PDF: upload PDF, convert to images (for AI processing)
+                    logger.info(f"Step 1: Uploading report PDF and converting to images...")
+                    report_url, image_bytes_list = await process_pdf_report(
+                        report_file,
+                        patient_name
+                    )
+                    
+                    logger.info(f"✓ Report PDF uploaded to: {report_url}")
+                    logger.info(f"✓ Converted PDF to {len(image_bytes_list)} image(s) for AI processing")
+                    
+                    # Step 2: Parse report with AI vision model
+                    logger.info(f"Step 2: Parsing report with AI vision model...")
+                    parsed_report = await parse_report_with_vision(
+                        image_bytes_list=image_bytes_list,
+                        medications=medications_list,
+                        diagnosis=diagnosis
+                    )
+                    
+                    logger.info(f"✓ Parsed report: {parsed_report.name} with {len(parsed_report.biomarkers)} biomarkers")
+                    
+                    # Step 3: Structure report data
+                    logger.info(f"Step 3: Structuring report data...")
+                    biomarkers_list = []
+                    for biomarker in parsed_report.biomarkers:
+                        biomarkers_list.append({
+                            "name": biomarker.name,
+                            "range": biomarker.range,
+                            "value": biomarker.value
+                        })
+                    
+                    report_dict = {
+                        "url": report_url,
+                        "name": parsed_report.name,
+                        "reason": parsed_report.reason,
+                        "biomarkers": biomarkers_list
+                    }
+                    reports_list.append(report_dict)
+                    logger.info(f"✓ Successfully structured report: {parsed_report.name}")
+                    
+                except HTTPException:
+                    logger.error(f"HTTPException during report {idx + 1} processing", exc_info=True)
+                    # Continue with other reports even if one fails
+                    continue
+                except Exception as e:
+                    logger.error(f"Error processing report {idx + 1} ({report_file.filename}): {str(e)}", exc_info=True)
+                    # Continue with other reports even if one fails
+                    continue
+            
+            logger.info(f"=== REPORT PROCESSING COMPLETED ===")
+            logger.info(f"Successfully processed {len(reports_list)} out of {len(reports)} report(s)")
         
         # Upload medical certificate PDF if provided
         medical_certificate_url = ""
@@ -248,8 +363,8 @@ async def create_patient_endpoint(
             assigned_doctor=assigned_doctor,
             age=age,
             gender=gender,
-            bill_details=bill_urls,
-            reports=report_urls,
+            bill_details=bills_list,
+            reports=reports_list,
             doctor_notes=doctor_notes,
             doctor_medical_certificate=medical_certificate_url,
             telegram_chat_id=telegram_chat_id,
