@@ -1,0 +1,924 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "functionCode": "const msg = $json.message;\n\n// START command\nif (msg.text && msg.text.toLowerCase() === '/start') {\n  return [{ type: 'start', chatId: msg.chat.id }];\n}\n\n// Contact shared\nif (msg.contact && msg.contact.phone_number) {\n  return [{ type: 'contact', phone: msg.contact.phone_number, chatId: msg.chat.id }];\n}\n\n// OTP input (6 digits)\nif (msg.text && /^\\d{6}$/.test(msg.text)) {\n  return [{ type: 'otp', otpInput: msg.text, chatId: msg.chat.id }];\n}\n\nreturn [{ type: 'other', chatId: msg.chat.id }];\n"
+      },
+      "id": "ce67523b-b698-449e-824d-9e12b30f623d",
+      "name": "Detect Input Type",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        -624,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.type}}",
+              "value2": "contact"
+            }
+          ]
+        }
+      },
+      "id": "561a016e-4ed9-4da5-aad0-2d965a73cb19",
+      "name": "IF Contact",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.type}}",
+              "value2": "otp"
+            }
+          ]
+        }
+      },
+      "id": "18071dea-c5de-4807-9219-1ef7154f734c",
+      "name": "IF OTP Input",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        48,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "functionCode": "const store = this.getWorkflowStaticData('global');\nconst input = $json.otpInput;\n\nlet match = false;\nlet matchedPhone = null;\n\nfor (const phone in store) {\n  if (String(store[phone].otp) === String(input)) {\n    match = true;\n    matchedPhone = phone;\n    \n    break;\n  }\n}\n\nreturn [{\n  chatId: $json.chatId,\n  success: match,\n  phone: matchedPhone\n}];\n"
+      },
+      "id": "03f94a57-ce60-455e-98f7-0b005145ca3d",
+      "name": "Verify OTP",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        272,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Detect Input Type').first().json.chatId }}",
+        "text": "✅ OTP verified successfully!",
+        "additionalFields": {}
+      },
+      "id": "ea8b4dd9-3b73-4bf6-8197-03f1e55bbe6f",
+      "name": "OTP Success",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        720,
+        16
+      ],
+      "webhookId": "f9388b2f-db8d-4fe7-9271-af6fbec3c3c7",
+      "credentials": {
+        "telegramApi": {
+          "id": "BvScLQfQrPRlsXg8",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "❌ Incorrect OTP. Please try again.",
+        "additionalFields": {}
+      },
+      "id": "47aab1b5-d8fb-4eb9-940e-b3ad984decd6",
+      "name": "OTP Failed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        720,
+        208
+      ],
+      "webhookId": "5b3dd99e-0695-437b-9631-59563f0f0830",
+      "credentials": {
+        "telegramApi": {
+          "id": "BvScLQfQrPRlsXg8",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -848,
+        112
+      ],
+      "id": "7c908c87-6809-455e-aaab-45f998e46ca0",
+      "name": "Telegram Trigger1",
+      "webhookId": "87f21150-51d8-44ad-8b25-24081696df03",
+      "credentials": {
+        "telegramApi": {
+          "id": "yZUgT4Cm0MbyfpNd",
+          "name": "Telegram account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "702cfb3b-dbe4-423f-93ae-1ece35d0badf",
+              "leftValue": "={{$json.type}}",
+              "rightValue": "start",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -400,
+        112
+      ],
+      "id": "868c025f-a561-4598-92d9-a7ab1b9948aa",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "Welcome!  Please share your mobile number for verification.",
+        "replyMarkup": "replyKeyboard",
+        "replyKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": " Share Phone Number",
+                    "additionalFields": {
+                      "request_contact": true
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "replyKeyboardOptions": {},
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -176,
+        16
+      ],
+      "id": "eb5c6ef8-53ed-47b0-a038-9e7c8fc1bfc4",
+      "name": "Send a text message",
+      "webhookId": "6ec96ca4-357a-4079-b73e-99b539d81fb6",
+      "credentials": {
+        "telegramApi": {
+          "id": "BvScLQfQrPRlsXg8",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "patient_contact",
+              "condition": "eq",
+              "keyValue": "={{ $json.phone_local }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "telegram_chat_id",
+              "fieldValue": "={{ $('Verify OTP').first().json.chatId }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        16
+      ],
+      "id": "1bb9992b-59a6-4a2f-b4d7-bc8fbee2e1f7",
+      "name": "Update a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const otp = Math.floor(100000 + Math.random() * 900000);\nconst store = this.getWorkflowStaticData('global');\n\n// Store the entire object using the phone number as the key\nstore[$json.phone] = {\n    otp: otp,\n    phone: $json.phone // Storing the phone number inside the object as well\n};\n\nreturn [{\n    phone: $json.phone,\n    otp: otp,\n    chatId: $json.chatId\n}];"
+      },
+      "id": "54c73a99-b5b5-4635-84a2-1c211fb21861",
+      "name": "Generate OTP",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        272,
+        -176
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "let phone = $json.phone.toString();\n\n// Add + if missing\nif (!phone.startsWith('+')) {\n  phone = '+' + phone;\n}\n\nreturn {\n  phone: phone\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        48,
+        -176
+      ],
+      "id": "302a09a0-effd-4d81-b3d1-593673c3d2d1",
+      "name": "Refine Phone Number"
+    },
+    {
+      "parameters": {
+        "from": "+19403940390",
+        "to": "={{$json.phone}}",
+        "message": "=Your OTP is {{$json.otp}}",
+        "options": {}
+      },
+      "id": "d8dbe0d7-80d2-45c2-8524-3868445c759a",
+      "name": "Send OTP",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        496,
+        -176
+      ],
+      "credentials": {
+        "twilioApi": {
+          "id": "ujDC0ynQnocm84tg",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Detect Input Type').first().json.chatId }}",
+        "text": "OTP has been sent to your number. Please enter the 6-digit OTP.",
+        "additionalFields": {}
+      },
+      "id": "be5d87a1-4600-466e-a1ab-8269ba0e6408",
+      "name": "Ask For OTP",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        720,
+        -176
+      ],
+      "webhookId": "a9ee7fb1-2813-48b7-a94e-e4e24440270b",
+      "credentials": {
+        "telegramApi": {
+          "id": "BvScLQfQrPRlsXg8",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "94d7b497-a1bf-49de-bd6d-e543e1ab49bb",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        496,
+        112
+      ],
+      "id": "d5c7d6b5-8ed0-4784-b3ca-78c83e7fd3ed",
+      "name": "If otp success?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\n\nlet phoneWithoutCountryCode = $('Verify OTP').first().json.phone.slice(-10)\n\n\n// Return the result\nreturn {\n    phone_local: phoneWithoutCountryCode,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        16
+      ],
+      "id": "174bab05-1feb-427b-b012-b1a2c03f0788",
+      "name": "Format phone number"
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telegram_chat_id",
+              "keyValue": "={{ $('Telegram Trigger1').item.json.message.chat.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        272,
+        496
+      ],
+      "id": "7a57c65f-e25c-4936-8ac4-f0271fff2295",
+      "name": "Get a row",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d6cf4e53-5c84-4c45-8ed5-56d731632a80",
+              "leftValue": "={{ $json.telegram_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        496,
+        496
+      ],
+      "id": "ac3ddc08-ea7a-481c-8078-5cd209b49551",
+      "name": "If verify user"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Detect Input Type').first().json.chatId }}",
+        "text": "Please verify first.",
+        "additionalFields": {}
+      },
+      "id": "7548f32e-a5a4-431a-a243-8b650c07cd0f",
+      "name": "Ask to get verified",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        720,
+        592
+      ],
+      "webhookId": "a9ee7fb1-2813-48b7-a94e-e4e24440270b",
+      "credentials": {
+        "telegramApi": {
+          "id": "BvScLQfQrPRlsXg8",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telegram_chat_id",
+              "keyValue": "={{ $('Telegram Trigger1').item.json.message.chat.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        720,
+        400
+      ],
+      "id": "972f871b-645e-4417-8741-8bd3a6d9c1ff",
+      "name": "Get messages",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telegram_chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Telegram Trigger1').item.json.message.chat.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "messages",
+              "fieldValue": "={{ $json.messages }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1168,
+        400
+      ],
+      "id": "410e677d-a152-4218-b35d-4f3149c08d18",
+      "name": "Update Messages with user",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Telegram Trigger1').item.json.message.chat.id }}",
+        "text": "={{ $json.output.response.replace(/[_*\\[\\]()~`>#+=|{}.!\\\\-]/g, '\\\\$&') }}",
+        "additionalFields": {
+          "parse_mode": "MarkdownV2"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1616,
+        400
+      ],
+      "id": "86d53fd5-673d-4877-b318-03e7f584f54e",
+      "name": "Send Reply",
+      "webhookId": "44d6a482-4a89-4b1e-97e2-64b202f3601c",
+      "credentials": {
+        "telegramApi": {
+          "id": "BvScLQfQrPRlsXg8",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let messages = $('Update Messages with user').first().json.messages\nconst ai_message = $('Call \\'LLM Brain\\'').first().json.output.response\n\n\n// Normalize messages to always be an array\nif (!Array.isArray(messages)) {\n    messages = [];\n}\n\n// Append new user message\nmessages.push({\n    message: ai_message,\n    role: \"ai\",\n    timestamp: new Date().toISOString()\n});\n\nreturn {\n    messages\n};\n\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        400
+      ],
+      "id": "b3303139-d12a-4c8e-864f-eb8b59e0c0a6",
+      "name": "Messages2"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "patients",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "telegram_chat_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Telegram Trigger1').first().json.message.chat.id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "messages",
+              "fieldValue": "={{ $json.messages }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2064,
+        400
+      ],
+      "id": "1a2e6f19-d6cf-4420-9721-9609a61b720d",
+      "name": "Update messages with AI",
+      "credentials": {
+        "supabaseApi": {
+          "id": "IFYLHFQGxlYBmry8",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "let messages = $input.first().json.messages\n\nconst current_message = $('Telegram Trigger1').first().json.message.text\n\nif (!Array.isArray(messages)) {\n    messages = [];\n}\n\nmessages.push({\n    message: current_message,\n    role: \"user\",\n    timestamp: new Date().toISOString()\n});\n\nreturn {\n    messages\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        400
+      ],
+      "id": "8bdc82c4-4e6f-4c2c-a784-d53db8454573",
+      "name": "Messages"
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "Hitl09eSXIkACO05",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/Hitl09eSXIkACO05",
+          "cachedResultName": "LLM Brain"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {}
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [
+        1392,
+        400
+      ],
+      "id": "11658da7-6799-4a91-816c-0a7d51b8ba82",
+      "name": "Call 'LLM Brain'"
+    }
+  ],
+  "connections": {
+    "Detect Input Type": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Contact": {
+      "main": [
+        [
+          {
+            "node": "Refine Phone Number",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF OTP Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF OTP Input": {
+      "main": [
+        [
+          {
+            "node": "Verify OTP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify OTP": {
+      "main": [
+        [
+          {
+            "node": "If otp success?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTP Success": {
+      "main": [
+        [
+          {
+            "node": "Format phone number",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger1": {
+      "main": [
+        [
+          {
+            "node": "Detect Input Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF Contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        []
+      ]
+    },
+    "Generate OTP": {
+      "main": [
+        [
+          {
+            "node": "Send OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refine Phone Number": {
+      "main": [
+        [
+          {
+            "node": "Generate OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send OTP": {
+      "main": [
+        [
+          {
+            "node": "Ask For OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask For OTP": {
+      "main": [
+        []
+      ]
+    },
+    "If otp success?": {
+      "main": [
+        [
+          {
+            "node": "OTP Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OTP Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format phone number": {
+      "main": [
+        [
+          {
+            "node": "Update a row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get a row": {
+      "main": [
+        [
+          {
+            "node": "If verify user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If verify user": {
+      "main": [
+        [
+          {
+            "node": "Get messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ask to get verified",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get messages": {
+      "main": [
+        [
+          {
+            "node": "Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Messages with user": {
+      "main": [
+        [
+          {
+            "node": "Call 'LLM Brain'",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reply": {
+      "main": [
+        [
+          {
+            "node": "Messages2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Messages2": {
+      "main": [
+        [
+          {
+            "node": "Update messages with AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Messages": {
+      "main": [
+        [
+          {
+            "node": "Update Messages with user",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call 'LLM Brain'": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Telegram Trigger1": [
+      {
+        "update_id": 755004934,
+        "message": {
+          "message_id": 128,
+          "from": {
+            "id": 602769317,
+            "is_bot": false,
+            "first_name": "Vansh",
+            "last_name": "Shah",
+            "language_code": "en"
+          },
+          "chat": {
+            "id": 602769317,
+            "first_name": "Vansh",
+            "last_name": "Shah",
+            "type": "private"
+          },
+          "date": 1763204916,
+          "text": "What are my medications ?"
+        }
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f53f576ce84faf96af7ca2fa4a524c876d6ba4651f9e0c15dfb49aef0653f7e"
+  }
+}

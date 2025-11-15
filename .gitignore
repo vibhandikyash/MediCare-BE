@@ -9,6 +9,7 @@ wheels/
 
 # Virtual environments
 .venv/
+temp_auto_push.bat
 
 # Environment variables
 .env
@@ -20,4 +21,5 @@ wheels/
 *.ipynb
 
 # Reports
-evals/reports/
+evals/reports/.gitignore
+temp_interactive_push.bat

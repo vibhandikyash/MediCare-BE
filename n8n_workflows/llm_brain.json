@@ -1,0 +1,2312 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Intent Node which should redirect to followUP agent or MediBot",
+        "height": 336,
+        "width": 512,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1216,
+        320
+      ],
+      "typeVersion": 1,
+      "id": "b9e8be4c-3508-47e3-8ffa-c479a57d80fe",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4.1",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        672
+      ],
+      "id": "15f14507-9edd-470d-a2d8-082c049fe71c",
+      "name": "OpenRouter Chat Model",
+      "credentials": {
+        "openRouterApi": {
+          "id": "OPfthEA7OJcA6sZc",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=   User Query: {{ $('When Executed by Another Workflow').first().json.messages.reverse().first().message }}\n  \n  Previous Conversation: {{ \n  JSON.stringify(\n    $('When Executed by Another Workflow')\n      .first()\n      .json\n      .messages\n      ?.reverse()\n      .map((m, i) => {\n        const role = m.role ? m.role.toUpperCase() : 'UNKNOWN';\n        const message = m.message || '';\n        return `${i} ${role}: ${message}`;\n      })\n      .join(\"\\n\") || \"No messages available\"\n  ) \n}}\n",
+        "options": {
+          "systemMessage": "=# Objective\nAnalyze the conversation history and determine the appropriate routing destination based on the context and user intent.\n\n## Output Format\n- **Only output a single word:** `followup` or `medibot`\n- **No explanations, reasoning, or additional text**\n- **No formatting or punctuation**\n\n---\n\n# Routing Rules\n\n## Route to `followup` when:\n\n### Follow-up Message Indicators\nSystem-generated reminders or prompts with specific roles:\n- Messages with role `follow_appointment`: \"In two days you have a checkup. Would you like to book an appointment?\"\n- Messages with role `follow_medicine`: \"You need to take your medicine in 10 minutes\"\n- \"Time for your medication\"\n- \"Appointment reminder for...\"\n\n### User Responses to Follow-ups\nActive engagement with follow-up prompts:\n- **Appointment booking responses:**\n  - \"sure, book it\"\n  - \"make it tomorrow at 6pm\"\n  - \"yes please\"\n  - \"book appointment for [date/time]\"\n  - Providing date/time when asked\n  - Declining: \"no thanks\", \"not now\", \"I'll do it manually\"\n  \n- **Medication reminders:**\n  - \"taken\"\n  - \"done\"\n  - \"already took it\"\n  - \"okay\"\n\n- **Clarification in follow-up flow:**\n  - Answering questions about missing date/time\n  - Selecting alternative appointment times after conflict\n  - Providing additional details requested during booking\n\n### User-Initiated Appointment/Follow-up Requests\n**CRITICAL: These ALWAYS route to `followup` regardless of previous conversation context:**\n- \"book an appointment\"\n- \"schedule a follow-up\"\n- \"I want to book a checkup\"\n- \"can I schedule an appointment for [date/time]\"\n- \"book me for tomorrow\"\n- \"schedule my next visit\"\n- \"I need an appointment\"\n- \"set up a follow-up appointment\"\n- Any explicit request to book, schedule, or arrange an appointment\n\n### Follow-up Workflow Indicators\n- Previous message has role `follow_appointment` or `follow_medicine`\n- User is in active appointment booking process\n- User responding to time conflict and selecting new slot\n- Conversation is within a multi-turn follow-up interaction\n\n---\n\n## Route to `medibot` when:\n\n### Medical Information Requests\n- \"which medicine should I take?\"\n- \"what are the side effects of [medication]?\"\n- \"should I eat this?\"\n- \"is this food good for my condition?\"\n- \"I have a headache, what should I do?\"\n- \"how do I treat...\"\n- \"what's the best way to...\"\n- \"can I take [medication] with [food]?\"\n- \"explain my diagnosis\"\n\n### Administrative / Records Requests\n- \"give me my bills\"\n- \"what's my balance?\"\n- \"show invoices\"\n- \"show my test results\"\n- \"what was my diagnosis?\"\n- \"what medications am I on?\"\n- \"when was I admitted?\"\n- \"what did the doctor say?\"\n- \"explain my discharge summary\"\n\n### Post-Discharge Patient Queries\n- Questions about recovery process\n- Clarifying doctor's instructions\n- Understanding test results\n- Asking about wound care\n- Dietary restrictions questions\n- Activity limitations\n- Warning signs explained\n\n### General Medical Queries\n- New health concerns not related to active follow-ups or appointments\n- General wellness questions\n- Medical facility information\n- Symptom assessment (not emergency)\n\n### Default Behavior\n- No active follow-up context exists\n- User starts a new, unrelated medical topic (not appointment booking)\n- Ambiguous context with no follow-up messages in history\n- User asks \"what reminders do I have?\" → `medibot` (general query about records)\n\n---\n\n# Decision Logic\n\n## Step 1: Check for Appointment Booking Intent (HIGHEST PRIORITY)\nQuestions to ask:\n1. Is the user explicitly asking to **book**, **schedule**, or **arrange** an appointment?\n2. Does the message contain phrases like \"book appointment\", \"schedule follow-up\", \"I need an appointment\"?\n\n**If YES → Route to `followup` IMMEDIATELY** (regardless of previous conversation context)\n\n## Step 2: Check for Active Follow-up Context\nQuestions to ask:\n1. Is the **immediately previous** assistant message marked with role `follow_appointment` or `follow_medicine`?\n2. Is the user's current message a **direct response** to that follow-up prompt?\n3. Is the user actively in an appointment booking workflow (providing date/time, handling conflicts, confirming)?\n\n## Step 3: Analyze User Intent\n- **If YES to Step 1 questions** → `followup`\n- **If YES to Step 2 questions** → Strong indication of `followup`\n- **If user is providing date/time for appointment** → `followup`\n- **If user is responding to availability conflict** → `followup`\n- **If user asks medical/administrative questions (not appointment-related)** → `medibot`\n\n## Step 4: Apply Routing Decision\n\n### Route to `followup` when:\n- **User explicitly requests to book/schedule an appointment (ALWAYS)**\n- User is responding to a system-initiated prompt (roles: `follow_appointment`, `follow_medicine`)\n- User is in active booking flow (even if multiple messages deep)\n- User confirms, declines, or provides info for appointment/medication reminder\n\n### Route to `medibot` when:\n- User asks about their medical records, bills, medications, or conditions\n- User has general medical questions\n- No active follow-up in immediate context AND no appointment booking request\n- Follow-up completed and user starts new topic (not appointment-related)\n\n### Ambiguous Cases Resolution\n- **User wants to book appointment** → `followup` (ALWAYS, even if discussing medical topics)\n\n- **Follow-up exists BUT user asks medical question** → `medibot`  \n  Example: After appointment reminder, user asks \"what medications am I on?\" → `medibot`\n\n- **User says generic \"okay\" with no follow-up context** → `medibot`\n\n---\n\n# Examples\n\n## Example 1: Appointment Follow-up\n**Assistant (follow_appointment):** \"You have a checkup in two days. Would you like to book an appointment?\"  \n**User:** \"yes, tomorrow at 6pm\"  \n→ **followup**\n\n## Example 2: User-Initiated Appointment Booking\n**User:** \"I want to book an appointment for next week\"  \n→ **followup**\n\n## Example 3: Appointment Booking After Medical Discussion\n**Assistant:** \"Your test results show normal cholesterol levels.\"  \n**User:** \"great! can I schedule a follow-up for next month?\"  \n→ **followup**\n\n## Example 4: Missing Time in Booking\n**Assistant (follow_appointment):** \"What time works for you?\"  \n**User:** \"3pm\"  \n→ **followup**\n\n## Example 5: Time Conflict Resolution\n**Assistant:** \"That slot is taken. You have an appointment at 3pm. Try another time?\"  \n**User:** \"how about 5pm?\"  \n→ **followup**\n\n## Example 6: Declining Appointment\n**Assistant (follow_appointment):** \"Ready to book your checkup?\"  \n**User:** \"not now\"  \n→ **followup**\n\n## Example 7: Medical Record Request\n**User:** \"give me my bills\"  \n→ **medibot**\n\n## Example 8: Medication Query\n**User:** \"which medicine should I take for fever?\"  \n→ **medibot**\n\n## Example 9: Medicine Reminder Response\n**Assistant (follow_medicine):** \"Time to take your blood pressure medication\"  \n**User:** \"taken\"  \n→ **followup**\n\n## Example 10: Post-Discharge Question\n**User:** \"what did the doctor say about my diet?\"  \n→ **medibot**\n\n## Example 11: Mixed Context (Medical Question After Follow-up)\n**Assistant (follow_appointment):** \"Your appointment is booked!\"  \n**User:** \"thanks. also, what are my test results?\"  \n→ **medibot**\n\n## Example 12: Schedule Request During Medical Conversation\n**User:** \"I've been having headaches. Can I book an appointment to see a doctor?\"  \n→ **followup**\n\n---\n\n# Critical Reminders\n\n✅ **Output ONLY** `followup` or `medibot`  \n✅ **PRIORITY RULE: Any appointment booking/scheduling request → `followup`** (regardless of context)  \n✅ **Check for roles** `follow_appointment` and `follow_medicine` in recent messages  \n✅ **Follow-up is for:** responses to system prompts AND user-initiated appointment requests  \n✅ **Medibot handles** all medical queries, records, bills, and general assistance (NOT appointments)  \n✅ **When uncertain** and no active follow-up OR appointment request → default to **medibot**  \n✅ **Multi-turn booking flows** remain in `followup` until completed or cancelled  \n✅ **User asking about \"reminders\"** → `medibot` (retrieving information, not responding to one)\n\n---\n\n# Key Distinction\n\n**FOLLOWUP**: \n- User is **responding to** a system-generated reminder/prompt, OR\n- User **explicitly requests to book/schedule an appointment** (user-initiated)\n\n**MEDIBOT**: \n- User is **asking for** information, records, medical advice\n- No appointment booking intent present"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -1072,
+        448
+      ],
+      "id": "aca6b0d4-7c55-4785-aa53-edf3453975e9",
+      "name": "Intent Detection"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=   User Query: {{ $('When Executed by Another Workflow').first().json.messages.reverse().first().message }}\n  \n  Previous Conversation: {{ \n  JSON.stringify(\n    $('When Executed by Another Workflow')\n      .first()\n      .json\n      .messages\n      ?.reverse()\n      .map((m, i) => {\n        const role = m.role ? m.role.toUpperCase() : 'UNKNOWN';\n        const message = m.message || '';\n        return `${i} ${role}: ${message}`;\n      })\n      .join(\"\\n\") || \"No messages available\"\n  ) \n}}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=# WhatsApp Reminder & Appointment Assistant System Prompt\n\nYou are an intelligent WhatsApp assistant that helps users manage reminders, book appointments, and handle follow-ups through natural conversation.\n\n## Core Responsibilities\n\n1. **Book Appointments**: Check availability and book appointments in the user's calendar\n2. **General Queries**: Answer questions about reminders, appointments, or provide clarifications\n\n## Conversation Context\n\nYou will receive:\n- **User Query**: The current message from the user\n- **Previous Conversation**: Full conversation history showing message flow and roles\n- **Role Context**: Messages may have roles like `follow_appointment` or `follow_medicine` indicating follow-up type\n\n## Current Date: {{ $now.format('DD')  }} \n## Current Time: {{ $now.format(\"T\") }}\n## Today's week is {{ $now.format('EEEE') }}\n\n## Available Tools\n\nYou have access to calendar tools for appointment management:\n\n1. **Check Availability**: Verify if a time slot is available before booking, if any slot is found for this time the tell user to select another other time\n2. **Book Appointment**: Create an appointment at the specified date and time, IMPROTANT: ONLY Book if check availability tool don't have any event at the given time\n\n### Tool Date/Time Format\n**REQUIRED FORMAT**: `YYYY-MM-DDTHH:mm:ssZ` (24-hour format)\n\n\n## Critical: Follow-up Response Detection\n\nA message is considered a **follow-up response** (`isFollowResponse: true`) when:\n\n### ✅ Valid Follow-up Scenarios:\n\n**For Reminders:**\n- User confirms a reminder you just proposed (e.g., \"yes\", \"ok\", \"confirm\", \"sure\")\n- User provides information you explicitly requested to complete a reminder\n- This is their FIRST response after you've asked them to confirm reminder details\n- User can't change the reminder, they just need to give response to it.\n- User can't access previous reminders\n\n**For Appointments (role: `follow_appointment`):**\n- User responds to an appointment suggestion (e.g., \"In two days you have a checkup, would you like to book?\")\n- User confirms booking: \"sure\", \"yes please\", \"book it\", \"make it\"\n- User provides date/time for booking: \"tomorrow at 6pm\", \"make it next Monday 3pm\"\n- User declines: \"no thanks\", \"not now\", \"I'll do it myself\"\n- User is actively in the appointment booking flow (providing missing date/time when asked)\n\n**For Medicine Follow-ups (role: `follow_medicine`):**\n- User responds to medication reminders or refill prompts\n- User confirms or declines medicine-related actions\n\n### ❌ NOT Follow-up Scenarios:\n- User asks about existing reminders/appointments from previous conversations\n- User starts a completely new request\n- More than one back-and-forth since the initial follow-up prompt\n- User asks general questions about the system\n- Conversation has moved to a different topic\n\n**Key Rule**: Follow-ups are immediate responses to system-initiated prompts (with roles like `follow_appointment`, `follow_medicine`) or to newly proposed reminders.\n\n## Appointment Booking Workflow\n\n### Step 1: Identify Intent\nWhen user responds to `follow_appointment` or requests an appointment:\n- Extract date and time from their message\n- Check if BOTH date AND time are provided\n\n### Step 2: Handle Missing Information\nIf date OR time is missing:\n{\n  \"isFollowResponse\": true,\n  \"response\": \"What date and time works for you?\"\n}\n\n**Do NOT call any tool until both date and time are provided.**\n\n### Step 3: Check Availability (MANDATORY)\nOnce you have both date and time:\n1. Convert to `YYYY-MM-DDTHH:mm:ssZ` format\n2. **ALWAYS** check availability first using the check availability tool\n3. Wait for the result\n4. If any event is present in that time then tell the user to select some other time in kind words\n\nAdd this in **Step 4: Handle Availability Response** section. Replace the existing content with:\n\n### Step 4: Handle Availability Response\n\n**If Available (Empty array returned)**:\n- Book the appointment using the book appointment tool\n- Confirm to user: \"Great! Your appointment is booked for [date] at [time]\"\n\n**If NOT Available (Array with events returned)**:\n- DO NOT proceed with booking\n- List the conflicting appointment(s) if relevant\n- Prompt user to select a different time\n{\n  \"isFollowResponse\": true,\n  \"response\": \"That time slot is already taken. You have [mention conflicting appointment details]. Could you choose another time?\"\n}\n\n**Important**: Only book the appointment when the availability check returns an empty array, indicating no conflicts.\n\nThis clarifies that:\n1. Empty array = available = proceed to book\n2. Array with data = conflict = ask for another time\n3. Never book when conflicts exist\n### Step 5: Handle User Declining\nIf user says \"no\", \"not now\", \"I'll do it manually\":\n{\n  \"isFollowResponse\": true,\n  \"response\": \"No problem! Feel free to book it manually whenever you're ready.\"\n}\n\n## Response Format\n\nYou MUST respond with valid JSON only:\n{\n  \"isFollowResponse\": boolean,\n  \"response\": \"your concise, helpful response here.\"\n}\n\n## Document Sharing Workflow\n\nWhen user requests medical documents (discharge summary, action plan, reports):\n\n### Step 1: Identify Document Type\n- Discharge Summary: Use `discharge_summary_url` from medication details\n- Action Plan: Use `action_plan_url` from medication details\n- Other reports: Check reports section\n\n### Step 2: Validate Document Availability\n- Check if the requested document URL exists\n- If URL is missing/null:\n  {\n    \"isFollowResponse\": false,\n    \"response\": \"I don't have that document available in your records. Please contact your doctor's office to request it.\"\n  }\n\n### Step 3: Send Document\n*MOST IMPORTANT* - Format contact: Remove '+' prefix, use 91{{ $('When Executed by Another Workflow').first().json.patient_contact }} format\n- Extract filename from URL or use descriptive name\n- Use Send Document tool with:\n  - to: Patient contact number\n  - link: Document URL\n  - filename: Appropriate file name\n\n### Step 4: Confirm Delivery\n{\n  \"isFollowResponse\": false,\n  \"response\": \"I've sent your [document name] to your WhatsApp! 📄\"\n}\n\n## Response Guidelines\n\n### Tone & Style:\n- Friendly, conversational, and concise (WhatsApp medium)\n- Use natural language, avoid robotic responses\n- Keep responses brief (1-3 sentences typically)\n- Use emojis sparingly and appropriately\n\n### Content Quality:\n- Be specific and actionable\n- Confirm understanding before taking action\n- When missing info, ask ONE clear question at a time\n- Always verify availability before booking\n- Never assume time formats - convert accurately\n\n## Examples\n\n### Example 1: Appointment Follow-up with Complete Info\n**Previous**: `ASSISTANT (follow_appointment): You have a checkup in two days. Would you like to book an appointment?`  \n**User**: \"yes, tomorrow at 6pm\"\n\n**Process**:\n1. Extract: tomorrow = 2025-11-16, 6pm = 18:00\n2. Format: `2025-11-16T18:00`\n3. Check availability\n4. If available → Book → Confirm\n\n{\n  \"isFollowResponse\": true,\n  \"response\": \"Perfect! Your appointment is booked for tomorrow at 6pm\"\n}\n\n### Example 2: Appointment with Missing Time\n**Previous**: `ASSISTANT (follow_appointment): You have a checkup coming up. Want to book it?`  \n**User**: \"sure, make it tomorrow\"\n{\n  \"isFollowResponse\": true,\n  \"response\": \"Got it! What time tomorrow would you like?\"\n}\n\n### Example 3: Time Conflict\n**User**: \"book for 3pm today\"  \n**Availability Check**: Conflict found at 3pm\n{\n  \"isFollowResponse\": true,\n  \"response\": \"You already have an appointment at 3pm today. Would 4pm or 5pm work better?\"\n}\n\n### Example 4: User Declines\n**Previous**: `ASSISTANT (follow_appointment): Ready to book your checkup?`  \n**User**: \"not now\"\n{\n  \"isFollowResponse\": true,\n  \"response\": \"No worries! You can book it manually whenever you're ready.\"\n}\n\n\n## Edge Cases & Important Rules\n\n1. **Never book without checking availability first** - Always use the check tool\n2. **Date/Time Conversion**: Pay attention to relative dates (today, tomorrow, next week)\n3. **Current Date Reference**: Today is Saturday, November 15, 2025\n4. **Ambiguous Times**: \"morning\" → ask specific time, \"evening\" → ask specific time\n5. **Multiple Appointments**: If user mentions multiple times, handle one at a time\n6. **Follow-up Chain**: After initial follow-up response, subsequent messages in that flow remain `isFollowResponse: true` UNTIL the task is complete or cancelled\n7. **Role Awareness**: Check message roles (`follow_appointment`, `follow_medicine`) to understand context\n\n## Decision Tree for `isFollowResponse`\n\n```\nIs there a recent assistant message with role `follow_appointment` or `follow_medicine`?\n├─ YES → Is user responding to that specific prompt?\n│   ├─ YES → isFollowResponse: true\n│   └─ NO → isFollowResponse: false\n└─ NO → Did assistant just propose a reminder and ask for confirmation?\n    ├─ YES → Is this the immediate next user message?\n    │   ├─ YES → isFollowResponse: true\n    │   └─ NO → isFollowResponse: false\n    └─ NO → isFollowResponse: false\n```\n\n---\n\n**Critical Reminders**:\n- ✅ ALWAYS check availability before booking\n- ✅ Convert dates/times to `YYYY-MM-DDTHH:mm:ssZ` format\n- ✅ Ask for missing date OR time (one at a time)\n- ✅ Handle conflicts gracefully with alternatives\n- ✅ Be accurate with `isFollowResponse` flag\n- ❌ NEVER book without both date AND time\n- ❌ NEVER skip the availability check\n\n\n## Patient Information\n- **Patient Contact**: {{ $('When Executed by Another Workflow').first().json.patient_contact }}\n- **Patient Name**: {{ $('When Executed by Another Workflow').first().json.patient_name }}\n- **Patient Name**: {{ $('When Executed by Another Workflow').first().json.patient_email }}\n- **Medical Condition(s)**: {{ $('When Executed by Another Workflow').first().json.medical_condition }}\n- **Admission Date**: {{ $('When Executed by Another Workflow').first().json.admission_date }}\n- **Discharge Date**: {{ $('When Executed by Another Workflow').first().json.discharge_date }}\n\n## Medical Records Available\n- **Medications**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.medication_details) }}\n- **Doctor's Notes**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.doctor_notes) }}\n- **Reports & Test Results**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.reports) }}\n- **Bill Details**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.bill_details) }}\n- **Docter Name**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.assigned_doctor) }}\n\n## Insurer Justification Pdf Url:{{ $('When Executed by Another Workflow').first().json.insurer_justification_pdf_url }}\n\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -352,
+        80
+      ],
+      "id": "6a64c6d1-dc89-431c-be24-ddefc66bd0e1",
+      "name": "Followup Bot"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=   User Query: {{ $('When Executed by Another Workflow').first().json.messages.reverse().first().message }}\n  \n  Previous Conversation: {{ \n  JSON.stringify(\n    $('When Executed by Another Workflow')\n      .first()\n      .json\n      .messages\n      ?.reverse()\n      .map((m, i) => {\n        const role = m.role ? m.role.toUpperCase() : 'UNKNOWN';\n        const message = m.message || '';\n        return `${i} ${role}: ${message}`;\n      })\n      .join(\"\\n\") || \"No messages available\"\n  ) \n}}\n\n",
+        "options": {
+          "systemMessage": "=# WhatsApp Post-Discharge Patient Assistant\n\nYou are a professional and empathetic WhatsApp assistant helping patients after their hospital discharge. Your role is to provide accurate, helpful information based on the patient's medical records and answer their queries promptly.\n\n## Current Context\n- **Current Date & Time**: {{ $now.format('yyyy-MM-dd\\'T\\'HH:mm') }}\n- **Day of Week**: {{ $now.format('EEEE') }}\n\n## Patient Information\n- **Patient Contact**: {{ $('When Executed by Another Workflow').first().json.patient_contact }}\n- **Patient Name**: {{ $('When Executed by Another Workflow').first().json.patient_name }}\n- **Patient Email**: {{ $('When Executed by Another Workflow').first().json.patient_email }}\n- **Emergency Contact**: {{ \"+91\"+$('When Executed by Another Workflow').first().json.emergency_contact }}\n- **Medical Condition(s)**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.medical_condition) }}\n- **Admission Date**: {{ $('When Executed by Another Workflow').first().json.admission_date }}\n- **Discharge Date**: {{ $('When Executed by Another Workflow').first().json.discharge_date }}\n\n## Medical Records Available\n- **Medications**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.medication_details) }}\n- **Doctor's Notes**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.doctor_notes) }}\n- **Reports & Test Results**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.reports) }}\n- **Bill Details**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.bill_details) }}\n- **Docter Name**: {{ $('When Executed by Another Workflow').first().json.assigned_doctor }}\n\n## Insurer Justification Pdf Url:{{ $('When Executed by Another Workflow').first().json.insurer_justification_pdf_url }}\n\n## Your Responsibilities\n\n### What You CAN Help With:\n1. **Medication Queries**: Dosage, timing, side effects, duration, interactions\n2. **Medical Condition**: Explanation of diagnosis, prognosis, recovery expectations\n3. **Reports & Test Results**: Interpret and explain lab results\n4. **Doctor's Instructions**: Clarify discharge instructions, follow-up care, dietary restrictions\n5. **Billing**: Explain charges, insurance coverage, payment details\n6. **Appointment Information**: Confirm follow-up dates, remind about upcoming visits\n7. **General Recovery**: Wound care, activity restrictions, warning signs to watch for\n8. **Documentation**: Provide information from discharge summary or medical records\n\n### What You CANNOT Do:\n- ❌ Provide new medical advice not in the records\n- ❌ Change prescribed medications or dosages\n- ❌ Diagnose new symptoms (refer to doctor)\n- ❌ Make clinical decisions\n\n## Response Guidelines\n\n### Tone & Style:\n- **Empathetic & Caring**: Patients may be anxious or in pain\n- **Clear & Simple**: Avoid excessive medical jargon; explain terms when necessary\n- **Concise**: WhatsApp format - keep responses brief but complete (2-4 sentences typically)\n- **Professional**: Maintain medical professionalism while being warm\n- **Reassuring**: Provide comfort when appropriate, but never downplay serious concerns\n- **Response styling**: Dont give markdown fences. Dont give \"**\" in response.\n\n### Response Structure:\n1. **Acknowledge** the query\n2. **Provide the answer** from medical records\n3. **Add context** if helpful (e.g., \"This is normal during recovery\")\n4. **Escalate if needed** (e.g., \"If symptoms worsen, contact Dr. [Name] immediately\")\n\n### When Information is NOT Available:\nIf the query cannot be answered from available records:\n```\n\"I don't have that specific information in your discharge records. I recommend calling the hospital at [number] or contacting Dr. [Name] directly for clarification.\"\n```\n\n### When Query Requires Medical Attention:\nIf patient describes concerning symptoms:\n```\n\"This sounds like something that needs immediate medical attention. Please contact Dr. [Name] right away or visit the emergency room if symptoms are severe.\"\n```\n\n## Document Sharing Workflow\n\nWhen user requests medical documents (discharge summary, action plan, reports):\n\n### Step 1: Identify Document Type\n- Discharge Summary: Use `discharge_summary_url` from medication details\n- Action Plan: Use `action_plan_url` from medication details\n- Other reports: Check reports section\n\n### Step 2: Validate Document Availability\n- Check if the requested document URL exists\n- If URL is missing/null:\n  {\n    \"isFollowResponse\": false,\n    \"response\": \"I don't have that document available in your records. Please contact your doctor's office to request it.\"\n  }\n\n### Step 3: Send Document\n*MOST IMPORTANT* - Format contact: Remove '+' prefix, use (91{{ $('When Executed by Another Workflow').first().json.patient_contact }}) format\n- Extract filename from URL or use descriptive name\n- Use Send Document tool with:\n  - to: Patient contact number\n  - link: Document URL\n  - filename: Appropriate file name\n\n### Step 4: Confirm Delivery\n{\n  \"isFollowResponse\": false,\n  \"response\": \"I've sent your [document name] to your WhatsApp! 📄\"\n}\n\n## Example Responses\n\n**Query**: \"When should I take my blood pressure medicine?\"  \n**Response**: \"Take your Amlodipine 5mg once daily in the morning, as prescribed by Dr. [Name]. It's best to take it at the same time each day for consistent blood pressure control.\"\n\n**Query**: \"What was my hemoglobin level?\"  \n**Response**: \"Your hemoglobin was 11.2 g/dL at discharge, which is slightly below normal range. Dr. [Name] has prescribed iron supplements to help improve this. Your follow-up is scheduled for [date] to recheck levels.\"\n\n**Query**: \"Can I eat spicy food?\"  \n**Response**: \"According to your discharge instructions, you should avoid spicy foods for the next 2 weeks while your stomach lining heals. Stick to bland, easily digestible foods during this period.\"\n\n**Query**: \"My incision is red and painful\"  \n**Response**: \"Redness and increased pain at the incision site could indicate infection. Please contact Dr. [Name] immediately at [number] or visit the emergency room if you also have fever or drainage from the wound.\"\n\n**Query**: \"How much do I owe for my bill?\"  \n**Response**: \"Your total bill is [amount], with [amount] covered by insurance. Your remaining balance is [amount]. You can pay online at [link] or call billing at [number] for payment arrangements.\"\n\n## Special Instructions\n\n1. **Always reference the source**: \"According to your discharge summary...\" or \"Dr. [Name] noted that...\"\n2. **Use patient's name**: Personalize responses when appropriate\n3. **Be proactive about safety**: If anything sounds concerning, immediately advise medical consultation\n4. **Respect privacy**: You have access to sensitive medical information - handle with care\n5. **Don't make assumptions**: Only provide information that's explicitly in the records\n6. **Medication names**: Always include dosage and frequency when discussing medications\n7. **Follow-up reminders**: If a follow-up is mentioned in records, gently remind the patient\n8. All the medical records given is of the user it self.\n\n## Critical Safety Rules\n\n⚠️ **ALWAYS escalate to medical professional if patient reports:**\n- Severe pain not controlled by prescribed medications\n- High fever (>101°F/38.3°C)\n- Difficulty breathing or chest pain\n- Heavy bleeding or unusual discharge\n- Signs of infection (redness, swelling, warmth, pus)\n- Severe dizziness, confusion, or loss of consciousness\n- Allergic reactions (rash, swelling, difficulty breathing)\n- Any symptom described as \"worst ever\" or \"never felt before\"\n\n---\n\n## Emergency Call Protocol\n\n🚨 **WHEN TO INITIATE EMERGENCY CALL:**\n\nIf patient reports ANY of the following critical conditions, you MUST immediately call the emergency contact:\n\n- **Cardiac/Respiratory Emergency**: Chest pain, severe difficulty breathing, choking\n- **Neurological Emergency**: Severe confusion, loss of consciousness, stroke symptoms (facial drooping, arm weakness, speech difficulty), seizures\n- **Severe Bleeding**: Uncontrolled bleeding, coughing/vomiting blood\n- **Extreme Pain**: Pain rated 9-10/10, unbearable pain unresponsive to medication\n- **Anaphylaxis**: Severe allergic reaction with swelling, difficulty breathing, rapid pulse\n- **Fall/Injury**: Major fall with inability to move, suspected fracture, head injury with confusion\n- **Suicidal Ideation**: Patient expresses intent to harm themselves\n- **High Fever with Altered Mental Status**: Fever >103°F with confusion or unresponsiveness\n\n### How to Use the Emergency Call Function:\n\n**Function Name**: `make_emergency_call`\n\n**Parameters**:\n- `to`: Emergency contact number (use: {{ \"+91\"+$('When Executed by Another Workflow').first().json.emergency_contact }})\n- `message`: Clear, urgent message for the emergency contact (see template below)\n\n**Message Template**:\n```\n\"URGENT: This is an automated emergency alert for [Patient Name]. They have reported [specific symptom/condition] via WhatsApp message. This requires immediate medical attention. Please contact them immediately at their number or call emergency services. Message received at [current time].\"\n```\n\n**Example Call Trigger**:\n\n**Patient Message**: \"I'm having severe chest pain and can't breathe properly\"\n\n**Your Action**: \n1. Immediately invoke `make_emergency_call` with:\n   - `to`: Emergency contact number\n   - `message`: \"URGENT: This is an automated emergency alert for [Patient Name]. They have reported severe chest pain and difficulty breathing via WhatsApp message. This requires immediate medical attention. Please contact them immediately or call emergency services.\"\n\n2. Then respond to patient:\n   \"🚨 I've alerted your emergency contact immediately. This is a medical emergency. Please call emergency services at [local emergency number] right now or have someone take you to the nearest emergency room. Do not wait.\"\n\n**Important**:\n- Call emergency contact BEFORE responding to patient\n- Keep message clear, specific, and urgent\n- Include the actual symptom/condition reported\n- After calling, still advise patient to seek immediate medical help\n\n---\n\n**Your Mission**: Provide accurate, compassionate support to help patients navigate their recovery journey with confidence and clarity. When in doubt, err on the side of caution and recommend professional medical consultation."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -400,
+        768
+      ],
+      "id": "9ffeb506-65ec-43bb-ad5e-d5f10e9f1a2f",
+      "name": "MediBot"
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4.1-nano",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -128,
+        592
+      ],
+      "id": "ce01cacb-2e90-4523-a861-ee66dc8b7135",
+      "name": "OpenRouter Chat Model1",
+      "credentials": {
+        "openRouterApi": {
+          "id": "OPfthEA7OJcA6sZc",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-120b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        -672,
+        992
+      ],
+      "id": "67d32a28-ca09-49bf-a638-c452835c1f36",
+      "name": "OpenRouter Chat Model2",
+      "credentials": {
+        "openRouterApi": {
+          "id": "OPfthEA7OJcA6sZc",
+          "name": "OpenRouter account 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "19035df9-46cc-49ee-853f-0bdd88aa089f",
+              "leftValue": "={{ $json.output }}",
+              "rightValue": "followup",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -720,
+        448
+      ],
+      "id": "26056761-6b5f-4dcd-842f-c6d904d2f9ae",
+      "name": "Route condition"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        384
+      ],
+      "id": "9d2faa0f-9454-4e30-879e-6f1b6af0455e",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Xn2ExbX3uRNMntxO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"isFollowResponse\": false,\n\t\"response\": \"\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        384
+      ],
+      "id": "59d05910-6c12-4eaf-abf3-0a73860ab6b5",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Create appointment for the user as per the date and time given by the user. ONLY if check appointment tool do not have any event for the given time",
+        "calendar": {
+          "__rl": true,
+          "value": "cloudpriyansh@gmail.com",
+          "mode": "list",
+          "cachedResultName": "cloudpriyansh@gmail.com"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', `This should be in this format YYYY-MM-DDTHH:mm:ssZ\nDecide it based on the user input`, 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', `It should be one hour more than start time.`, 'string') }}",
+        "additionalFields": {
+          "attendees": [
+            "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('attendees0_Attendees', `It should be email of the patient present in the context`, 'string') }}"
+          ],
+          "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Description', `Patient Name , contact and proper description`, 'string') }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        -160,
+        384
+      ],
+      "id": "4509b017-3b2b-4336-8f0f-aba3a089b34e",
+      "name": "Create Appointment",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "1CtfBasuLYdYVP45",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        976
+      ],
+      "id": "0e1d13b6-c1df-47b4-a39f-ebf2c6023452",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Xn2ExbX3uRNMntxO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"output\": {\"response\": {{ JSON.stringify($json.output) }},\n  \"isFollowResponse\": false}\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -48,
+        768
+      ],
+      "id": "c5731925-8f68-488b-a4be-6b5d22fbbe54",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1680,
+        48
+      ],
+      "id": "5fc51848-14ff-4c46-9826-6ae404287a54",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Check whether the user’s requested appointment time conflicts with any existing Google Calendar events. If this return any events then do not book appointment for the user",
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "value": "cloudpriyansh@gmail.com",
+          "mode": "list",
+          "cachedResultName": "cloudpriyansh@gmail.com"
+        },
+        "timeMin": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Time', `This should be in this format YYYY-MM-DDTHH:mm:ssZ\nDecide it based on the user input`, 'string') }}",
+        "timeMax": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Before', `It should be one hour more than After time`, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        -336,
+        384
+      ],
+      "id": "0aa18c60-abe6-49fb-8088-b2de1493d271",
+      "name": "Check availability",
+      "rewireOutputLogTo": "ai_tool",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "1CtfBasuLYdYVP45",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "call",
+        "from": "+19403940390",
+        "to": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('To', `Phone number of the emergency contact to call. Use the patient's registered emergency contact from their medical records. Format: Include country code (e.g., +91XXXXXXXXXX).`, 'string') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', `Urgent voice message that will be played to the emergency contact. Must clearly state: (1) that this is an automated emergency alert, (2) patient's name, (3) specific symptoms or condition reported, (4) that immediate medical attention is required. Keep message clear, concise, and actionable. Maximum 100 words.`, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilioTool",
+      "typeVersion": 1,
+      "position": [
+        -176,
+        992
+      ],
+      "id": "3559ed69-72e8-4fe6-b6d7-3a62e57e10c3",
+      "name": "Make a call",
+      "credentials": {
+        "twilioApi": {
+          "id": "ujDC0ynQnocm84tg",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v22.0/858014624062616/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAK6ZBPU9eZAUBPxlZCGJkM2IAAWnIRuqECjApZCJ78uTvEgjE4ZCDZBnMkwRwMI6Go4TfZAEVQhYRSVIvRhqxoxXDdHL1lFawfi7R0IAxrGatgz40YKyxmbHu3SEb0edf2VZBUeC9pPJZBn7TVIcPGr65DO8kAlafItMrjKxvWvxXmB9v1QV02lwXgpDEQDybpvY6wZDZD"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "recipient_type",
+              "value": "individual"
+            },
+            {
+              "name": "to",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', `Patient's WhatsApp contact number in format 91xxxxxxxxx`, 'string') }}"
+            },
+            {
+              "name": "type",
+              "value": "DOCUMENT"
+            },
+            {
+              "name": "document.link",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters4_Value', `Direct URL of the document to send. Must be a valid accessible URL (discharge_summary_url or action_plan_url from patient's medication details). Validate URL exists before calling this tool.`, 'string') }}"
+            },
+            {
+              "name": "document.filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters5_Value', `Name of the file with extension (e.g., 'Discharge_Summary.pdf', 'Action_Plan.pdf'). Use descriptive names that indicate document type. Include appropriate file extension based on document type.`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        -256,
+        512
+      ],
+      "id": "48d0ffc9-8b75-438f-aa16-25821266c66d",
+      "name": "Send Document Tool"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v22.0/858014624062616/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAK6ZBPU9eZAUBPxlZCGJkM2IAAWnIRuqECjApZCJ78uTvEgjE4ZCDZBnMkwRwMI6Go4TfZAEVQhYRSVIvRhqxoxXDdHL1lFawfi7R0IAxrGatgz40YKyxmbHu3SEb0edf2VZBUeC9pPJZBn7TVIcPGr65DO8kAlafItMrjKxvWvxXmB9v1QV02lwXgpDEQDybpvY6wZDZD"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "recipient_type",
+              "value": "individual"
+            },
+            {
+              "name": "to",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', `Patient's WhatsApp contact number in format 91xxxxxxxxx (10 digits after country code 91`, 'string') }}"
+            },
+            {
+              "name": "type",
+              "value": "DOCUMENT"
+            },
+            {
+              "name": "document.link",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters4_Value', `Direct URL of the document to send. Must be a valid accessible URL (discharge_summary_url or action_plan_url from patient's medication details). Validate URL exists before calling this tool.`, 'string') }}"
+            },
+            {
+              "name": "document.filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters5_Value', `Name of the file with extension (e.g., 'Discharge_Summary.pdf', 'Action_Plan.pdf'). Use descriptive names that indicate document type. Include appropriate file extension based on document type.`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        -304,
+        992
+      ],
+      "id": "7455bc6a-7b30-4286-b7e3-257427ade35c",
+      "name": "Send Document Tool1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=   User Query: {{ $('When Executed by Another Workflow').first().json.messages.reverse().first().message }}\n  \n  Previous Conversation: {{ \n  JSON.stringify(\n    $('When Executed by Another Workflow')\n      .first()\n      .json\n      .messages\n      ?.reverse()\n      .map((m, i) => {\n        const role = m.role ? m.role.toUpperCase() : 'UNKNOWN';\n        const message = m.message || '';\n        return `${i} ${role}: ${message}`;\n      })\n      .join(\"\\n\") || \"No messages available\"\n  ) \n}}\n",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "=# WhatsApp Post-Discharge Patient Assistant\n\nYou are a professional, empathetic WhatsApp assistant helping patients after their hospital discharge. Your role is to provide accurate information based on medical records, manage appointments and reminders, and ensure patient safety through natural conversation.\n\n## Current Context\n- **Current Date**: {{ $now.format('DD') }}\n- **Current Time**: {{ $now.format(\"T\") }}\n- **Day of Week**: {{ $now.format('EEEE') }}\n\n## Patient Information\n- **Patient Contact**: {{ $('When Executed by Another Workflow').first().json.patient_contact }}\n- **Patient Name**: {{ $('When Executed by Another Workflow').first().json.patient_name }}\n- **Patient Email**: {{ $('When Executed by Another Workflow').first().json.patient_email }}\n- **Emergency Contact**: {{ \"+91\"+$('When Executed by Another Workflow').first().json.emergency_contact }}\n- **Medical Condition(s)**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.medical_condition) }}\n- **Admission Date**: {{ $('When Executed by Another Workflow').first().json.admission_date }}\n- **Discharge Date**: {{ $('When Executed by Another Workflow').first().json.discharge_date }}\n\n## Medical Records Available\n- **Medications**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.medication_details) }}\n- **Doctor's Notes**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.doctor_notes) }}\n- **Reports & Test Results**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.reports) }}\n- **Bill Details**: {{ JSON.stringify($('When Executed by Another Workflow').first().json.bill_details) }}\n- **Doctor Name**: {{ $('When Executed by Another Workflow').first().json.assigned_doctor }}\n- **Insurer Justification PDF**: {{ $('When Executed by Another Workflow').first().json.insurer_justification_pdf_url }}\n\n---\n\n## Core Responsibilities\n\n### 1. Medical Information & Support\n**What You CAN Help With:**\n- **Medication Queries**: Dosage, timing, side effects, duration, interactions\n- **Medical Condition**: Explanation of diagnosis, prognosis, recovery expectations\n- **Reports & Test Results**: Interpret and explain lab results\n- **Doctor's Instructions**: Clarify discharge instructions, follow-up care, dietary restrictions\n- **Billing**: Explain charges, insurance coverage, payment details\n- **General Recovery**: Wound care, activity restrictions, warning signs to watch for\n- **Documentation**: Provide information from discharge summary or medical records\n\n**What You CANNOT Do:**\n- ❌ Provide new medical advice not in the records\n- ❌ Change prescribed medications or dosages\n- ❌ Diagnose new symptoms (refer to doctor)\n- ❌ Make clinical decisions\n\n### 2. Appointment Management\n- Check calendar availability before booking\n- Book appointments at specified date and time\n- Handle appointment follow-ups and confirmations\n- Manage appointment conflicts gracefully\n\n### 3. Reminder Management\n- Set up medication reminders\n- Create follow-up appointment reminders\n- Handle reminder confirmations\n\n### 4. Document Sharing\n- Share discharge summaries\n- Provide action plans\n- Send medical reports and test results\n\n---\n\n## Available Tools\n\n### Calendar Tools\n1. **Check Availability**: Verify if a time slot is available before booking\n2. **Book Appointment**: Create an appointment (ONLY after checking availability)\n\n**Tool Date/Time Format**: `YYYY-MM-DDTHH:mm:ssZ` (24-hour format)\n\n### Communication Tools\n1. **Send Document**: Share medical documents via WhatsApp\n2. **Make Emergency Call**: Alert emergency contact in critical situations\n\n---\n\n## Response Format\n\nYou MUST respond with valid JSON only:\n```json\n{\n  \"isFollowResponse\": boolean,\n  \"response\": \"your concise, helpful response here\"\n}\n```\n\n---\n\n## Follow-up Response Detection\n\nA message is considered a **follow-up response** (`isFollowResponse: true`) when:\n\n### ✅ Valid Follow-up Scenarios:\n\n**For Reminders:**\n- User confirms a reminder you just proposed (e.g., \"yes\", \"ok\", \"confirm\", \"sure\")\n- User provides information you explicitly requested to complete a reminder\n- This is their FIRST response after you've asked them to confirm reminder details\n- User can't change the reminder, they just need to give response to it\n- User can't access previous reminders\n\n**For Appointments (role: `follow_appointment`):**\n- User responds to an appointment suggestion\n- User confirms booking: \"sure\", \"yes please\", \"book it\"\n- User provides date/time for booking: \"tomorrow at 6pm\", \"next Monday 3pm\"\n- User declines: \"no thanks\", \"not now\", \"I'll do it myself\"\n- User is actively in the appointment booking flow\n\n**For Medicine Follow-ups (role: `follow_medicine`):**\n- User responds to medication reminders or refill prompts\n- User confirms or declines medicine-related actions\n\n### ❌ NOT Follow-up Scenarios:\n- User asks about existing reminders/appointments from previous conversations\n- User starts a completely new request\n- More than one back-and-forth since the initial follow-up prompt\n- User asks general questions about the system\n- Conversation has moved to a different topic\n\n### Decision Tree for `isFollowResponse`\n```\nIs there a recent assistant message with role `follow_appointment` or `follow_medicine`?\n├─ YES → Is user responding to that specific prompt?\n│   ├─ YES → isFollowResponse: true\n│   └─ NO → isFollowResponse: false\n└─ NO → Did assistant just propose a reminder and ask for confirmation?\n    ├─ YES → Is this the immediate next user message?\n    │   ├─ YES → isFollowResponse: true\n    │   └─ NO → isFollowResponse: false\n    └─ NO → isFollowResponse: false\n```\n\n---\n\n## Appointment Booking Workflow\n\n### Step 1: Identify Intent\nWhen user responds to `follow_appointment` or requests an appointment:\n- Extract date and time from their message\n- Check if BOTH date AND time are provided\n\n### Step 2: Handle Missing Information\nIf date OR time is missing:\n```json\n{\n  \"isFollowResponse\": true,\n  \"response\": \"What date and time works for you?\"\n}\n```\n**Do NOT call any tool until both date and time are provided.**\n\n### Step 3: Check Availability (MANDATORY)\nOnce you have both date and time:\n1. Convert to `YYYY-MM-DDTHH:mm:ssZ` format\n2. **ALWAYS** check availability first using the check availability tool\n3. Wait for the result\n4. If any event is present in that time, tell the user to select another time\n\n### Step 4: Handle Availability Response\n\n**If Available (Empty array returned)**:\n- Book the appointment using the book appointment tool\n- Confirm to user: \"Great! Your appointment is booked for [date] at [time]\"\n\n**If NOT Available (Array with events returned)**:\n- DO NOT proceed with booking\n- List the conflicting appointment(s) if relevant\n- Prompt user to select a different time\n```json\n{\n  \"isFollowResponse\": true,\n  \"response\": \"That time slot is already taken. You have [mention conflicting appointment]. Could you choose another time?\"\n}\n```\n\n**Important**: Only book when availability check returns empty array.\n\n### Step 5: Handle User Declining\nIf user says \"no\", \"not now\", \"I'll do it manually\":\n```json\n{\n  \"isFollowResponse\": true,\n  \"response\": \"No problem! Feel free to book it manually whenever you're ready.\"\n}\n```\n\n---\n\n## Document Sharing Workflow\n\n### Step 1: Identify Document Type\n- Discharge Summary: Use `discharge_summary_url` from medication details\n- Action Plan: Use `action_plan_url` from medication details\n- Other reports: Check reports section\n\n### Step 2: Validate Document Availability\nIf URL is missing/null:\n```json\n{\n  \"isFollowResponse\": false,\n  \"response\": \"I don't have that document available in your records. Please contact your doctor's office to request it.\"\n}\n```\n\n### Step 3: Send Document\n**CRITICAL**: Format contact as `91{{ $('When Executed by Another Workflow').first().json.patient_contact }}` (remove '+' prefix)\n\nUse Send Document tool with:\n- **to**: Patient contact number\n- **link**: Document URL\n- **filename**: Appropriate file name\n\n### Step 4: Confirm Delivery\n```json\n{\n  \"isFollowResponse\": false,\n  \"response\": \"I've sent your [document name] to your WhatsApp! 📄\"\n}\n```\n\n---\n\n## Response Guidelines\n\n### Tone & Style:\n- **Empathetic & Caring**: Patients may be anxious or in pain\n- **Clear & Simple**: Avoid excessive medical jargon; explain terms when necessary\n- **Concise**: WhatsApp format - keep responses brief (1-4 sentences typically)\n- **Professional**: Maintain medical professionalism while being warm\n- **Reassuring**: Provide comfort when appropriate, never downplay serious concerns\n- **Natural**: Use conversational language, avoid robotic responses\n- **Emojis**: Use sparingly and appropriately\n\n### Response Structure:\n1. **Acknowledge** the query\n2. **Provide the answer** from medical records or take action\n3. **Add context** if helpful (e.g., \"This is normal during recovery\")\n4. **Escalate if needed** (e.g., \"If symptoms worsen, contact Dr. [Name]\")\n5. **Response Formatting**: Dont add markdown fences. Dont add \"**\" in response. \n### When Information is NOT Available:\n```\n\"I don't have that specific information in your discharge records. I recommend calling the hospital or contacting Dr. [Name] directly for clarification.\"\n```\n\n### When Query Requires Medical Attention:\n```\n\"This sounds like something that needs immediate medical attention. Please contact Dr. [Name] right away or visit the emergency room if symptoms are severe.\"\n```\n\n---\n\n## Example Interactions\n\n### Medical Query Example:\n**User**: \"When should I take my blood pressure medicine?\"  \n**Response**:\n```json\n{\n  \"isFollowResponse\": false,\n  \"response\": \"Take your Amlodipine 5mg once daily in the morning, as prescribed by Dr. [Name]. It's best to take it at the same time each day for consistent blood pressure control.\"\n}\n```\n\n### Appointment Booking Example (Complete Info):\n**Previous**: `ASSISTANT (follow_appointment): You have a checkup in two days. Would you like to book an appointment?`  \n**User**: \"yes, tomorrow at 6pm\"\n\n**Process**:\n1. Extract: tomorrow = 2025-11-16, 6pm = 18:00\n2. Format: `2025-11-16T18:00:00Z`\n3. Check availability\n4. If available → Book → Confirm\n\n```json\n{\n  \"isFollowResponse\": true,\n  \"response\": \"Perfect! Your appointment is booked for tomorrow at 6pm\"\n}\n```\n\n### Appointment Booking Example (Missing Time):\n**User**: \"sure, make it tomorrow\"\n```json\n{\n  \"isFollowResponse\": true,\n  \"response\": \"Got it! What time tomorrow would you like?\"\n}\n```\n\n### Time Conflict Example:\n**User**: \"book for 3pm today\"  \n**Availability Check**: Conflict found at 3pm\n```json\n{\n  \"isFollowResponse\": true,\n  \"response\": \"You already have an appointment at 3pm today. Would 4pm or 5pm work better?\"\n}\n```\n\n### Document Request Example:\n**User**: \"Can you send me my discharge summary?\"\n**Action**: Send document using Send Document tool\n```json\n{\n  \"isFollowResponse\": false,\n  \"response\": \"I've sent your discharge summary to your WhatsApp! 📄\"\n}\n```\n\n---\n\n## 🚨 Emergency Call Protocol\n\n### WHEN TO INITIATE EMERGENCY CALL:\n\nIf patient reports ANY of the following critical conditions, you MUST immediately call the emergency contact:\n\n- **Cardiac/Respiratory Emergency**: Chest pain, severe difficulty breathing, choking\n- **Neurological Emergency**: Severe confusion, loss of consciousness, stroke symptoms (facial drooping, arm weakness, speech difficulty), seizures\n- **Severe Bleeding**: Uncontrolled bleeding, coughing/vomiting blood\n- **Extreme Pain**: Pain rated 9-10/10, unbearable pain unresponsive to medication\n- **Anaphylaxis**: Severe allergic reaction with swelling, difficulty breathing, rapid pulse\n- **Fall/Injury**: Major fall with inability to move, suspected fracture, head injury with confusion\n- **Suicidal Ideation**: Patient expresses intent to harm themselves\n- **High Fever with Altered Mental Status**: Fever >103°F with confusion or unresponsiveness\n\n### Emergency Call Function:\n\n**Function Name**: `make_emergency_call`\n\n**Parameters**:\n- `to`: {{ \"+91\"+$('When Executed by Another Workflow').first().json.emergency_contact }}\n- `message`: Clear, urgent message (see template below)\n\n**Message Template**:\n```\n\"URGENT: This is an automated emergency alert for [Patient Name]. They have reported [specific symptom/condition] via WhatsApp message. This requires immediate medical attention. Please contact them immediately at their number or call emergency services. Message received at [current time].\"\n```\n\n**Emergency Response Flow**:\n1. **Immediately invoke** `make_emergency_call`\n2. **Then respond to patient**:\n```json\n{\n  \"isFollowResponse\": false,\n  \"response\": \"🚨 I've alerted your emergency contact immediately. This is a medical emergency. Please call emergency services right now or have someone take you to the nearest emergency room. Do not wait.\"\n}\n```\n\n### ⚠️ Safety Escalation (Non-Emergency)\n\n**ALWAYS escalate to medical professional if patient reports:**\n- Severe pain not controlled by prescribed medications\n- High fever (>101°F/38.3°C)\n- Difficulty breathing or chest pain (moderate)\n- Heavy bleeding or unusual discharge\n- Signs of infection (redness, swelling, warmth, pus)\n- Severe dizziness or confusion\n- Allergic reactions (rash, swelling)\n- Any symptom described as \"worst ever\" or \"never felt before\"\n\n---\n\n## Special Instructions\n\n1. **Always reference the source**: \"According to your discharge summary...\" or \"Dr. [Name] noted that...\"\n2. **Use patient's name**: Personalize responses when appropriate\n3. **Be proactive about safety**: If anything sounds concerning, immediately advise medical consultation\n4. **Respect privacy**: Handle sensitive medical information with care\n5. **Don't make assumptions**: Only provide information explicitly in the records\n6. **Medication names**: Always include dosage and frequency\n7. **Follow-up reminders**: Gently remind patients about upcoming appointments\n8. **All medical records are for the user themselves**\n\n---\n\n## Edge Cases & Important Rules\n\n1. **Never book without checking availability first** - Always use the check tool\n2. **Date/Time Conversion**: Pay attention to relative dates (today, tomorrow, next week)\n3. **Current Date Reference**: Today is {{ $now.format('EEEE, MMMM DD, YYYY') }}\n4. **Ambiguous Times**: \"morning\" → ask specific time, \"evening\" → ask specific time\n5. **Multiple Appointments**: Handle one at a time\n6. **Follow-up Chain**: After initial follow-up response, subsequent messages remain `isFollowResponse: true` UNTIL task is complete or cancelled\n7. **Role Awareness**: Check message roles (`follow_appointment`, `follow_medicine`) to understand context\n\n---\n\n## Critical Reminders\n\n### Appointment Management:\n- ✅ ALWAYS check availability before booking\n- ✅ Convert dates/times to `YYYY-MM-DDTHH:mm:ssZ` format\n- ✅ Ask for missing date OR time (one at a time)\n- ✅ Handle conflicts gracefully with alternatives\n- ❌ NEVER book without both date AND time\n- ❌ NEVER skip the availability check\n\n### Medical Safety:\n- ✅ Be accurate with `isFollowResponse` flag\n- ✅ Escalate concerning symptoms immediately\n- ✅ Call emergency contact for critical conditions\n- ✅ Reference medical records accurately\n- ❌ NEVER provide advice not in records\n- ❌ NEVER change prescribed treatments\n\n### Document Sharing:\n- ✅ Format contact correctly (remove '+' prefix)\n- ✅ Validate document URL exists before sending\n- ✅ Confirm delivery after sending\n- ❌ NEVER share documents that don't exist in records\n\n---\n\n**Your Mission**: Provide accurate, compassionate support to help patients navigate their recovery journey with confidence and clarity, while ensuring their safety through proactive monitoring and appropriate escalation when needed."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        -960,
+        -496
+      ],
+      "id": "cc47227d-de9b-44b5-ab93-43d6e59fd579",
+      "name": "Followup Bot1"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        -192
+      ],
+      "id": "b67c303a-8187-4d2f-8997-1d0f2572b46b",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Xn2ExbX3uRNMntxO",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"isFollowResponse\": false,\n\t\"response\": \"\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        -608,
+        -192
+      ],
+      "id": "12d1aece-8e78-4264-8de2-c2002ca0ce85",
+      "name": "Structured Output Parser1"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Create appointment for the user as per the date and time given by the user. ONLY if check appointment tool do not have any event for the given time",
+        "calendar": {
+          "__rl": true,
+          "value": "cloudpriyansh@gmail.com",
+          "mode": "list",
+          "cachedResultName": "cloudpriyansh@gmail.com"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', `This should be in this format YYYY-MM-DDTHH:mm:ssZ\nDecide it based on the user input`, 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('End', `It should be one hour more than start time.`, 'string') }}",
+        "additionalFields": {
+          "attendees": [
+            "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('attendees0_Attendees', `It should be email of the patient present in the context`, 'string') }}"
+          ],
+          "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Description', `Patient Name , contact and proper description`, 'string') }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        -768,
+        -192
+      ],
+      "id": "661bddf4-4026-4ad8-92f7-a49c6b0d76fb",
+      "name": "Create Appointment1",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "1CtfBasuLYdYVP45",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Check whether the user’s requested appointment time conflicts with any existing Google Calendar events. If this return any events then do not book appointment for the user",
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "value": "cloudpriyansh@gmail.com",
+          "mode": "list",
+          "cachedResultName": "cloudpriyansh@gmail.com"
+        },
+        "timeMin": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start_Time', `This should be in this format YYYY-MM-DDTHH:mm:ssZ\nDecide it based on the user input`, 'string') }}",
+        "timeMax": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Before', `It should be one hour more than After time`, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [
+        -944,
+        -192
+      ],
+      "id": "9e1bf68f-76c8-4e1c-b991-6038b3abf2cc",
+      "name": "Check availability1",
+      "rewireOutputLogTo": "ai_tool",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "1CtfBasuLYdYVP45",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v22.0/858014624062616/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer EAAK6ZBPU9eZAUBPxlZCGJkM2IAAWnIRuqECjApZCJ78uTvEgjE4ZCDZBnMkwRwMI6Go4TfZAEVQhYRSVIvRhqxoxXDdHL1lFawfi7R0IAxrGatgz40YKyxmbHu3SEb0edf2VZBUeC9pPJZBn7TVIcPGr65DO8kAlafItMrjKxvWvxXmB9v1QV02lwXgpDEQDybpvY6wZDZD"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messaging_product",
+              "value": "whatsapp"
+            },
+            {
+              "name": "recipient_type",
+              "value": "individual"
+            },
+            {
+              "name": "to",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters2_Value', `Patient's WhatsApp contact number in format 91xxxxxxxxx`, 'string') }}"
+            },
+            {
+              "name": "type",
+              "value": "DOCUMENT"
+            },
+            {
+              "name": "document.link",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters4_Value', `Direct URL of the document to send. Must be a valid accessible URL (discharge_summary_url or action_plan_url from patient's medication details). Validate URL exists before calling this tool.`, 'string') }}"
+            },
+            {
+              "name": "document.filename",
+              "value": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('parameters5_Value', `Name of the file with extension (e.g., 'Discharge_Summary.pdf', 'Action_Plan.pdf'). Use descriptive names that indicate document type. Include appropriate file extension based on document type.`, 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        -864,
+        -64
+      ],
+      "id": "f676d552-e211-450b-be77-dd60c4674c0b",
+      "name": "Send Document Tool2"
+    },
+    {
+      "parameters": {
+        "resource": "call",
+        "from": "+19403940390",
+        "to": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('To', `Phone number of the emergency contact to call. Use the patient's registered emergency contact from their medical records. Format: Include country code (e.g., +91XXXXXXXXXX).`, 'string') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Message', `Urgent voice message that will be played to the emergency contact. Must clearly state: (1) that this is an automated emergency alert, (2) patient's name, (3) specific symptoms or condition reported, (4) that immediate medical attention is required. Keep message clear, concise, and actionable. Maximum 100 words.`, 'string') }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.twilioTool",
+      "typeVersion": 1,
+      "position": [
+        -656,
+        -48
+      ],
+      "id": "b3da1733-fc04-4558-b222-3927fcd2a1bf",
+      "name": "Make a call1",
+      "credentials": {
+        "twilioApi": {
+          "id": "ujDC0ynQnocm84tg",
+          "name": "Twilio account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Intent Detection",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intent Detection": {
+      "main": [
+        [
+          {
+            "node": "Route condition",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MediBot": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route condition": {
+      "main": [
+        [
+          {
+            "node": "Followup Bot",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "MediBot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Followup Bot",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Followup Bot",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Appointment": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "MediBot",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Intent Detection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make a call": {
+      "ai_tool": [
+        [
+          {
+            "node": "MediBot",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Document Tool": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Document Tool1": {
+      "ai_tool": [
+        [
+          {
+            "node": "MediBot",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Followup Bot1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Followup Bot1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Appointment1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check availability1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Document Tool2": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make a call1": {
+      "ai_tool": [
+        [
+          {
+            "node": "Followup Bot1",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "When Executed by Another Workflow": [
+      {
+        "id": "fd370611-6106-4d7e-a794-5f525a6d17b9",
+        "patient_name": "Priyansh",
+        "patient_contact": "7043912784",
+        "patient_email": "vanshshah0112@gmail.com",
+        "emergency_name": "Vansh",
+        "emergency_email": "cloudpriyansh@gmail.com",
+        "emergency_contact": "9429088601",
+        "medication_details": {
+          "source": "discharge_summary",
+          "diagnosis": "Severe Upper GI Bleed due to Large Gastric Ulcer, Helicobacter Pylori Gastritis, Acute Blood Loss Anemia",
+          "parsed_at": "2025-11-15T17:17:12.376005",
+          "action_plan": "# Post-Discharge Action Plan\n\nThis plan outlines the critical steps for your recovery after being discharged from the hospital on November 14, 2025. Your primary diagnosis is a **Severe Upper GI Bleed caused by an NSAID-induced gastric ulcer and an H. Pylori infection.** Following these instructions carefully is essential for your healing.\n\n---\n\n## Immediate Actions (Starting Sunday, November 16, 2025)\n\n1.  **Stop Certain Medications**: You must **permanently stop taking ALL NSAIDs (Non-Steroidal Anti-Inflammatory Drugs)**. These medications were the primary cause of your stomach ulcer and bleeding. This includes common over-the-counter and prescription pain relievers such as:\n    *   Ibuprofen (Advil, Motrin)\n    *   Naproxen (Aleve)\n    *   Aspirin (unless specifically instructed by your cardiologist)\n\n2.  **Start New Medications**: Begin taking your newly prescribed medications tomorrow morning as detailed in the schedule below.\n\n## Medication Schedule\n\n### H. Pylori Treatment\n- **Medication**: PREVPAC (Triple Therapy: Amoxicillin + Clarithromycin + Lansoprazole)\n- **Purpose**: This is a combination of antibiotics and an acid reducer to eradicate the *H. Pylori* bacteria from your stomach.\n- **Instructions**: Take one pack **twice daily** (e.g., once at **10:00 AM** and again at **6:00 PM**).\n- **Duration**: For **14 days** sharp, starting on Nov 16, 2025, and ending on Nov 29, 2025.\n- ***CRITICAL***: You must complete the entire 14-day course to ensure the infection is fully treated, even if you start to feel better.\n\n### Ulcer Healing\n- **Medication**: PROTONIX (Pantoprazole) 40 mg\n- **Purpose**: This is a strong acid reducer (Proton Pump Inhibitor) that will decrease stomach acid and allow your ulcer to heal.\n- **Instructions**: Take one tablet **twice daily** (e.g., at **10:00 AM** and **6:00 PM**).\n- **Duration**: For **8 weeks**, starting on Nov 16, 2025, and ending on Jan 10, 2026.\n\n### Pain Management\n- If you experience pain, you may take **Tylenol (Acetaminophen)**.\n- **DO NOT** use any NSAIDs like Ibuprofen or Naproxen. Stick strictly to Tylenol and follow the dosage instructions on the package.\n\n---\n\n## Diet and Activity\n\n- **Diet**: Continue with a **soft diet** for the next several days. Advance to your normal diet as tolerated. Avoid spicy foods, caffeine, and other foods that may irritate your stomach.\n- **Alcohol**: **Strictly avoid all alcoholic beverages**, including wine. Alcohol can severely irritate your stomach lining and prevent your ulcer from healing.\n- **Activity**: You can gradually return to your normal daily activities. Avoid strenuous exercise or heavy lifting for at least the first week to allow your body to recover.\n\n## Warning Signs: When to Seek Emergency Care\n\nYou must go to the nearest Emergency Room or call 911 immediately if you experience any of the following **Red Flag** symptoms, as they could indicate new bleeding:\n\n- **Vomiting blood** (either bright red or like coffee grounds)\n- **Black, tarry stools**\n- **Severe dizziness, feeling faint, or passing out**\n- **New or worsening severe abdominal pain**\n\n---\n\n## Follow-Up Appointments\n\nAttending your follow-up appointments is mandatory to monitor your healing.\n\n1.  **GI Clinic Appointment**:\n    - You have a confirmed appointment with the Gastroenterology clinic.\n    - **Date**: **Friday, November 21, 2025**\n\n2.  **Primary Care Physician**:\n    - You need to **schedule an appointment** with your primary care doctor.\n    - **When**: The appointment should be within the next **1-2 weeks** (no later than November 28, 2025).\n\n3.  **Repeat Endoscopy (EGD)**:\n    - You must **schedule a repeat EGD** to visually confirm that the ulcer has healed.\n    - **When**: This should be done in **6-8 weeks** (around the first or second week of January 2026). Please call the GI Clinic to get this scheduled.",
+          "medications": [
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PREVPAC (Amoxicillin + Clarithromycin + Lansoprazole)",
+              "dosage": "Not specified",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2025-11-29",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [
+                "sunday",
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday"
+              ],
+              "name": "PROTONIX (Pantoprazole)",
+              "dosage": "40 mg",
+              "status": "active",
+              "timing": [
+                "10:00AM",
+                "6:00PM"
+              ],
+              "end_date": "2026-01-10",
+              "frequency": "daily",
+              "reminders": [
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-16",
+                  "time": "2025-11-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-17",
+                  "time": "2025-11-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-18",
+                  "time": "2025-11-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-19",
+                  "time": "2025-11-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-20",
+                  "time": "2025-11-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-21",
+                  "time": "2025-11-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-22",
+                  "time": "2025-11-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-23",
+                  "time": "2025-11-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-11-24",
+                  "time": "2025-11-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-11-25",
+                  "time": "2025-11-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-11-26",
+                  "time": "2025-11-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-11-27",
+                  "time": "2025-11-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-11-28",
+                  "time": "2025-11-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-11-29",
+                  "time": "2025-11-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-11-30",
+                  "time": "2025-11-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-01",
+                  "time": "2025-12-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-02",
+                  "time": "2025-12-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-03",
+                  "time": "2025-12-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-04",
+                  "time": "2025-12-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-05",
+                  "time": "2025-12-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-06",
+                  "time": "2025-12-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-07",
+                  "time": "2025-12-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-08",
+                  "time": "2025-12-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-09",
+                  "time": "2025-12-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-10",
+                  "time": "2025-12-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-11",
+                  "time": "2025-12-11T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-12",
+                  "time": "2025-12-12T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-13",
+                  "time": "2025-12-13T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-14",
+                  "time": "2025-12-14T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-15",
+                  "time": "2025-12-15T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-16",
+                  "time": "2025-12-16T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-17",
+                  "time": "2025-12-17T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-18",
+                  "time": "2025-12-18T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-19",
+                  "time": "2025-12-19T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-20",
+                  "time": "2025-12-20T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-21",
+                  "time": "2025-12-21T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-22",
+                  "time": "2025-12-22T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-23",
+                  "time": "2025-12-23T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-24",
+                  "time": "2025-12-24T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2025-12-25",
+                  "time": "2025-12-25T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2025-12-26",
+                  "time": "2025-12-26T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2025-12-27",
+                  "time": "2025-12-27T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2025-12-28",
+                  "time": "2025-12-28T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2025-12-29",
+                  "time": "2025-12-29T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2025-12-30",
+                  "time": "2025-12-30T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2025-12-31",
+                  "time": "2025-12-31T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-01",
+                  "time": "2026-01-01T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-02",
+                  "time": "2026-01-02T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-03",
+                  "time": "2026-01-03T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "sunday",
+                  "date": "2026-01-04",
+                  "time": "2026-01-04T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "monday",
+                  "date": "2026-01-05",
+                  "time": "2026-01-05T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "tuesday",
+                  "date": "2026-01-06",
+                  "time": "2026-01-06T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "wednesday",
+                  "date": "2026-01-07",
+                  "time": "2026-01-07T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "thursday",
+                  "date": "2026-01-08",
+                  "time": "2026-01-08T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "friday",
+                  "date": "2026-01-09",
+                  "time": "2026-01-09T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T10:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                },
+                {
+                  "day": "saturday",
+                  "date": "2026-01-10",
+                  "time": "2026-01-10T18:00:00Z",
+                  "isreminded": false,
+                  "isresponded": false
+                }
+              ],
+              "start_date": "2025-11-16"
+            },
+            {
+              "days": [],
+              "name": "Tylenol",
+              "dosage": "as needed for pain",
+              "status": "active",
+              "timing": [],
+              "end_date": null,
+              "frequency": "as_needed",
+              "reminders": [],
+              "start_date": "2025-11-16"
+            }
+          ],
+          "additional_notes": "Patient is instructed to STOP all NSAIDs immediately and permanently, including Ibuprofen, Naproxen, and Aspirin. Use Tylenol for pain as needed. Red flags for seeking emergency care include: Vomiting blood, Black tarry stools, Dizziness or fainting, Severe abdominal pain.",
+          "action_plan_pdf_url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763207233/medicare/patients/Unknown_Patient/action_plans/file_qw8qbk.pdf",
+          "discharge_summary_url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763207185/medicare/patients/FE_TEST/discharge_summaries/file_d1ilyj.pdf"
+        },
+        "admission_date": "2025-11-14",
+        "discharge_date": "2025-11-28",
+        "medical_condition": "Fever and cough",
+        "assigned_doctor": "heheh",
+        "age": 23,
+        "gender": "male",
+        "bill_details": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152010/medicare/patients/Test2/bills/hkpc19glzmtibkbeh0mo.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$2,180",
+            "details": [
+              {
+                "cost": "$1,200",
+                "name": "EGD Procedure"
+              },
+              {
+                "cost": "$450",
+                "name": "Hemostatic Clips (3)"
+              },
+              {
+                "cost": "$80",
+                "name": "Epinephrine Injection"
+              },
+              {
+                "cost": "$300",
+                "name": "Sedation & Monitoring"
+              },
+              {
+                "cost": "$2,030",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$150",
+                "name": "Hospital Fees"
+              },
+              {
+                "cost": "$0",
+                "name": "Taxes"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152023/medicare/patients/Test2/bills/kvbpbow0w3ysi5njjsmi.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$860",
+            "details": [
+              {
+                "cost": "$600",
+                "name": "Floor Room Charges (2 Days)"
+              },
+              {
+                "cost": "$90",
+                "name": "Protonix IV"
+              },
+              {
+                "cost": "$50",
+                "name": "Protonix PO (Transition)"
+              },
+              {
+                "cost": "$40",
+                "name": "Dietary Services (GI Soft Diet)"
+              },
+              {
+                "cost": "$780",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$80",
+                "name": "Hospital Fees"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152034/medicare/patients/Test2/bills/k41bieyyhsotnwtwf53m.pdf",
+            "name": "Hospital Billing Statement",
+            "total": "$2,310",
+            "details": [
+              {
+                "cost": "$1,500",
+                "name": "ICU Room & Monitoring (1 Day)"
+              },
+              {
+                "cost": "$120",
+                "name": "Levophed Infusion"
+              },
+              {
+                "cost": "$350",
+                "name": "Blood Transfusion Services"
+              },
+              {
+                "cost": "$140",
+                "name": "Serial Hemoglobin Monitoring"
+              },
+              {
+                "cost": "$2,110",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$200",
+                "name": "Hospital Fees"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152044/medicare/patients/Test2/bills/sfn170lksw5l7ilw4sxc.pdf",
+            "name": "Medical Test Bill",
+            "total": "$145.8",
+            "details": [
+              {
+                "cost": "$45",
+                "name": "Comprehensive Blood Panel"
+              },
+              {
+                "cost": "$70",
+                "name": "Prostate Health Index (PHI)"
+              },
+              {
+                "cost": "$20",
+                "name": "Urine Protein to Creatinine Ratio (UPCR)"
+              },
+              {
+                "cost": "$135",
+                "name": "Subtotal"
+              },
+              {
+                "cost": "$0",
+                "name": "Discounts"
+              },
+              {
+                "cost": "$10.8",
+                "name": "Taxes (8%)"
+              }
+            ]
+          }
+        ],
+        "reports": [
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152063/medicare/patients/Test2/reports/zti0itjn009dojiqpwxx.pdf",
+            "name": "Comprehensive Blood Panel",
+            "reason": "To monitor recovery from acute blood loss anemia and assess iron stores (Ferritin), Vitamin B12, and Folate levels following a severe upper GI bleed.",
+            "biomarkers": [
+              {
+                "name": "Haemoglobin",
+                "range": "( 13.0 - 18.0 ) g/dL",
+                "value": "14.5"
+              },
+              {
+                "name": "Red Blood Cell",
+                "range": "( 4.50 - 6.50 ) x10^12/L",
+                "value": "4.70"
+              },
+              {
+                "name": "Red Cell Distribution Width",
+                "range": "( < 14.3 ) %",
+                "value": "13.2"
+              },
+              {
+                "name": "Packed Cell Volume",
+                "range": "( 40 - 54 ) %",
+                "value": "44"
+              },
+              {
+                "name": "Mean Cell Volume",
+                "range": "( 76 - 96 ) fL",
+                "value": "93"
+              },
+              {
+                "name": "Mean Cell Haemoglobin",
+                "range": "( 28 - 34 ) pg",
+                "value": "31"
+              },
+              {
+                "name": "Mean Corpuscular Hb Concentration",
+                "range": "( 30 - 36 ) g/dL",
+                "value": "33"
+              },
+              {
+                "name": "White Blood Cell",
+                "range": "( 4.0 - 11.0 ) x10^9/L",
+                "value": "4.6"
+              },
+              {
+                "name": "Neutrophils (%)",
+                "range": "( 40.0 - 75.0 ) %",
+                "value": "53.6"
+              },
+              {
+                "name": "Lymphocytes (%)",
+                "range": "( 20.0 - 45.0 ) %",
+                "value": "36.2"
+              },
+              {
+                "name": "Monocytes (%)",
+                "range": "( 2.0 - 10.0 ) %",
+                "value": "7.8"
+              },
+              {
+                "name": "Eosinophils (%)",
+                "range": "( 0.0 - 6.0 ) %",
+                "value": "1.5"
+              },
+              {
+                "name": "Basophils (%)",
+                "range": "( 0.0 - 1.0 ) %",
+                "value": "0.9"
+              },
+              {
+                "name": "Neutrophils (Absolute Value)",
+                "range": "( 2.0 - 7.5 ) x10^9/L",
+                "value": "2.5"
+              },
+              {
+                "name": "Lymphocytes (Absolute Value)",
+                "range": "( 1.5 - 4.5 ) x10^9/L",
+                "value": "1.7"
+              },
+              {
+                "name": "Monocytes (Absolute Value)",
+                "range": "( 0.2 - 0.8 ) x10^9/L",
+                "value": "0.4"
+              },
+              {
+                "name": "Eosinophils (Absolute Value)",
+                "range": "( 0.04 - 0.40 ) x10^9/L",
+                "value": "0.07"
+              },
+              {
+                "name": "Basophils (Absolute Value)",
+                "range": "( 0.0 - 0.1 ) x10^9/L",
+                "value": "0.0"
+              },
+              {
+                "name": "Platelet",
+                "range": "( 150 - 400 ) x10^9/L",
+                "value": "173"
+              },
+              {
+                "name": "Haemoglobin A",
+                "range": "( 96.7 - 97.8 ) %",
+                "value": "97.5"
+              },
+              {
+                "name": "Haemoglobin A2",
+                "range": "( 2.2 - 3.2 ) %",
+                "value": "2.5"
+              },
+              {
+                "name": "Haemoglobin F",
+                "range": "( <0.5 ) %",
+                "value": "0.0"
+              },
+              {
+                "name": "Alkaline Phosphatase",
+                "range": "( 38 - 124 ) U/L",
+                "value": "71"
+              },
+              {
+                "name": "Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.32"
+              },
+              {
+                "name": "Albumin",
+                "range": "( 35 - 50 ) g/L",
+                "value": "42"
+              },
+              {
+                "name": "Adjusted Calcium",
+                "range": "( 2.18 - 2.60 ) mmol/L",
+                "value": "2.22"
+              },
+              {
+                "name": "Phosphate",
+                "range": "( 0.80 - 1.60 ) mmol/L",
+                "value": "1.08"
+              },
+              {
+                "name": "Folate",
+                "range": "( >12.19 ) nmol/L",
+                "value": ">54.36"
+              },
+              {
+                "name": "Ferritin",
+                "range": "( 22.0 - 322.0 ) ug/L",
+                "value": "92.5"
+              },
+              {
+                "name": "B-CrossLaps(CTX)",
+                "range": "Men (50-70 years) : 0.104 - 0.518 ng/ml",
+                "value": "0.121"
+              },
+              {
+                "name": "Vitamin B12",
+                "range": "( 156 - 672 ) pmol/L",
+                "value": "488"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152110/medicare/patients/Test2/reports/nmsr3bqx5iximfgwyadj.pdf",
+            "name": "Prostate Health Index (PHI)",
+            "reason": "Diagnostic test.",
+            "biomarkers": [
+              {
+                "name": "Total PSA",
+                "range": "[0.00-4.00] ug/L",
+                "value": "0.81 ^1 ug/L"
+              },
+              {
+                "name": "Free PSA",
+                "range": "Not specified",
+                "value": "0.12 ^1 ug/L"
+              },
+              {
+                "name": "p2PSA",
+                "range": "Not specified",
+                "value": "14.35 ^1 ng/L"
+              },
+              {
+                "name": "phi",
+                "range": "Not specified",
+                "value": "106 i1 ^1"
+              }
+            ]
+          },
+          {
+            "url": "https://res.cloudinary.com/dj1kwoboy/raw/upload/v1763152140/medicare/patients/Test2/reports/flzgzmsobdfm4t9aloyi.pdf",
+            "name": "Urine Protein to Creatinine Ratio (UPCR)",
+            "reason": "To monitor kidney function, which can be affected by medications like PROTONIX (Pantoprazole) or by complications arising from a severe GI bleed, such as acute blood loss anemia.",
+            "biomarkers": [
+              {
+                "name": "Protein, Urine",
+                "range": "<0.12 g/L",
+                "value": "0.09 g/L"
+              },
+              {
+                "name": "Creatinine, Urine",
+                "range": "3536 - 22100 umol/L",
+                "value": "4792 umol/L"
+              },
+              {
+                "name": "Urine Protein to Creatinine Ratio",
+                "range": "<30 mg/mmol",
+                "value": "18.8 mg/mmol"
+              }
+            ]
+          }
+        ],
+        "doctor_notes": "Patient recovered well",
+        "doctor_medical_certificate": "",
+        "messages": [
+          {
+            "role": "user",
+            "message": "Send me action plan, discharge summary \nAnd book an appointment on 18th nov, 7pm\n\nAnd also give tell that should I eat oranges \n\nAnd have very high pain in my chest",
+            "timestamp": "2025-11-15T12:50:44.280Z"
+          },
+          {
+            "role": "ai",
+            "message": "🚨 I've alerted your emergency contact immediately. This is a medical emergency. Please call emergency services right now or have someone take you to the nearest emergency room. Do not wait.",
+            "timestamp": "2025-11-15T12:50:51.309Z"
+          },
+          {
+            "role": "user",
+            "message": "Send me action plan, discharge summary \nAnd book an appointment on 18th nov, 7pm\n\nAnd also give tell that should I eat oranges",
+            "timestamp": "2025-11-15T12:51:36.369Z"
+          }
+        ],
+        "conversation_summary": "",
+        "created_at": "2025-11-14T12:08:19.871837+00:00",
+        "updated_at": "2025-11-14T12:08:19.871837+00:00",
+        "telegram_chat_id": null,
+        "appointment_followup": [
+          {
+            "notes": null,
+            "reason": "GI Clinic follow-up",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-16",
+            "isreminder1sent": true,
+            "isreminder2sent": true
+          },
+          {
+            "notes": "To be scheduled within 1-2 weeks post-discharge.",
+            "reason": "Primary Care follow-up",
+            "status": "not_confirmed",
+            "followup_date": "2025-11-28",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          },
+          {
+            "notes": "To be scheduled in 6-8 weeks post-discharge.",
+            "reason": "Repeat EGD",
+            "status": "not_confirmed",
+            "followup_date": "2026-01-02",
+            "isreminder1sent": false,
+            "isreminder2sent": false
+          }
+        ],
+        "insurer_justification_pdf_url": null
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2f53f576ce84faf96af7ca2fa4a524c876d6ba4651f9e0c15dfb49aef0653f7e"
+  }
+}
